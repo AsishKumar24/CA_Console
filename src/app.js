@@ -1,8 +1,10 @@
 const express = require('express')
 const cors = require('cors')
 const cookieParser = require('cookie-parser')
+require('dotenv').config()
+const { connectDB } = require('./config/database')
 
-const{connectDB} = require('./config/database')
+
 const app = express()
 // app.use(
 //   cors({
@@ -13,6 +15,11 @@ const app = express()
 
 app.use(express.json())
 app.use(cookieParser())
+const authRouter = require('./routes/auth')
+
+app.use('/auth', authRouter)
+
+
 connectDB()
   .then(() => {
     console.log('connection established with database')

@@ -8,7 +8,7 @@ const clientSchema = new Schema(
     type: String,
     pan: String,
     gstin: String,
-    mobile: String,
+    mobile: { type: String, required: true },
     email: String,
     address: String,
     notes: String,
