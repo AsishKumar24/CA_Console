@@ -1,59 +1,62 @@
 const { Schema, model, Types } = require('mongoose')
 
-const checklistItemSchema = new Schema(
+// ------------------------------------------------------
+// Notes on the task (admin & staff)
+// ------------------------------------------------------
+const noteSchema = new Schema(
   {
-    label: String,
-    isDone: { type: Boolean, default: false },
-    completedAt: Date,
-    completedBy: { type: Types.ObjectId, ref: 'User' }
+    message: { type: String, required: true },
+    createdBy: { type: Types.ObjectId, ref: 'User', required: true },
+    createdAt: { type: Date, default: Date.now }
   },
   { _id: false }
 )
 
+// ------------------------------------------------------
+// Status history entries
+// ------------------------------------------------------
 const statusHistorySchema = new Schema(
   {
-    status: String,
+    status: { type: String, required: true },
     changedAt: { type: Date, default: Date.now },
-    changedBy: { type: Types.ObjectId, ref: 'User' },
+    changedBy: { type: Types.ObjectId, ref: 'User', required: true },
     note: String
   },
   { _id: false }
 )
 
+// ------------------------------------------------------
+// Main Task Schema
+// ------------------------------------------------------
 const taskSchema = new Schema(
   {
-    owner: { type: Types.ObjectId, ref: 'User', required: true },
+    owner: { type: Types.ObjectId, ref: 'User', required: true }, // Administrator
     client: { type: Types.ObjectId, ref: 'Client', required: true },
+
     title: { type: String, required: true },
     serviceType: String,
     assessmentYear: String,
     period: String,
+
+    assignedTo: { type: Types.ObjectId, ref: 'User' }, // Staff or Admin
+
     priority: { type: String, default: 'NORMAL' },
-    status: { type: String, default: 'NOT_STARTED' },
-    assignedTo: { type: Types.ObjectId, ref: 'User' },
-    createdBy: { type: Types.ObjectId, ref: 'User', required: true },
+
+    status: {
+      type: String,
+      enum: ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'],
+      default: 'NOT_STARTED'
+    },
+
     dueDate: Date,
     completedAt: Date,
 
-    billing: {
-      billingType: String,
-      feeAmount: Number,
-      isInvoiced: Boolean,
-      invoiceId: String
-    },
+    notes: [noteSchema],
 
-    reminders: {
-      email: Boolean,
-      whatsapp: Boolean
-    },
+    statusHistory: [statusHistorySchema],
 
-    checklist: [checklistItemSchema],
-    notesInternal: String,
-    attachments: [
-      { document: { type: Types.ObjectId, ref: 'Document' }, label: String }
-    ],
-
-    statusHistory: [statusHistorySchema]
+    isArchived: { type: Boolean, default: false },
+    archivedAt: Date,
   },
   { timestamps: true }
 )

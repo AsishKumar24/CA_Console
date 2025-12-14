@@ -5,9 +5,10 @@ const authRouter = express.Router()
 // const bcrypt = require('bcrypt')
 // const validator = require('validator')
 const authController = require('../controller/authController')
-
+const auth = require("../middleware/auth")
+const { requireAdmin } = require("../middleware/requireAdmin")
 
 authRouter.post('/login', authController.login)
-//authRouter.post('/register', auth, requireAdmin, registerStaff)
+authRouter.post('/register', auth, requireAdmin, authController.registerStaff)
 
 module.exports = authRouter

@@ -1,7 +1,7 @@
 const {User} = require("../models/User")
 const bcrypt = require('bcrypt')
 const jwt = require('jsonwebtoken')
-const validateSignUpData = require('../utils/validation')
+const { validateSignUpData } = require('../utils/validation')
 const validator = require('validator')
 
 exports.login = async (req, res) => {
@@ -43,7 +43,7 @@ exports.login = async (req, res) => {
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
-
+    
     // Send sanitized user info
     return res.json({
       user: {
@@ -51,7 +51,7 @@ exports.login = async (req, res) => {
         email: user.email,
         fullName: user.fullName,
         role: user.role
-      }
+      }, message : "login successfuly"
     })
   } catch (err) {
     console.error('Login error:', err)
