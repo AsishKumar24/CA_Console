@@ -20,7 +20,7 @@ function checkArchived (res, task) {
 // ---------------------------------------
 exports.createTask = async (req, res) => {
   try {
-    const data = sanitize(req.body)
+    const data = req.body
 
     if (!data.title) return res.status(400).json({ error: 'Title is required' })
     if (!data.client)
