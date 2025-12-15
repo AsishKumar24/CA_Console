@@ -316,14 +316,25 @@ router.get('/my', auth, taskCtrl.getMyTasks)
 
 // Admin tasks
 /**
- * @swagger
+ * @openapi
  * /api/tasks:
  *   get:
- *     summary: Get all tasks (Admin)
- *     tags: [Tasks]
+ *     summary: Get all tasks (Admin only)
+ *     description: |
+ *       Returns all tasks created by the admin, including assigned and unassigned tasks.
+ *     tags:
+ *       - Tasks
  *     security:
  *       - cookieAuth: []
+ *     responses:
+ *       '200':
+ *         description: List of tasks
+ *       '401':
+ *         description: Unauthorized
+ *       '403':
+ *         description: Admin only
  */
+
 
 router.get('/', auth, requireAdmin, taskCtrl.getAdminTasks)
 
