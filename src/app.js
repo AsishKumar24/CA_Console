@@ -36,7 +36,6 @@ if (process.env.NODE_ENV == 'production') {
 const healthCheck = require('./routes/health')
 app.use('/', healthCheck)
 const PORT = process.env.PORT || 3000
-
 connectDB()
   .then(() => {
     console.log('connection established with database')
