@@ -1,5 +1,5 @@
 const { Schema, model } = require('mongoose')
-
+const validator = require('validator')
 const userSchema = new Schema(
   {
     firstName: {
@@ -11,15 +11,42 @@ const userSchema = new Schema(
     lastName: {
       type: String
     },
-    email: { type: String, required: true, unique: true, lowercase: true },
-    passwordHash: { type: String, required: true },
-    role: { type: String, enum: ['ADMIN', 'STAFF'], default: 'STAFF' },
-    phone: String,
-    isActive: { type: Boolean, default: true }
+    email: {
+      type: String,
+      required: true,
+      unique: true,
+      lowercase: true,
+      trim: true,
+      validate: validator.isEmail
+    },
+
+    passwordHash: {
+      type: String,
+      required: true
+    },
+    role: {
+      type: String,
+      enum: ['ADMIN', 'STAFF'],
+      default: 'STAFF'
+    },
+    phone: {
+      type: String,
+      unique: true,
+      sparse: true,
+      validate: v => /^[6-9]\d{9}$/.test(v)
+    },
+    isActive: {
+      type: Boolean,
+      default: true
+    }
   },
-  { timestamps: true }
+  {
+    timestamps: true
+  }
 )
 
 const User = model('User', userSchema)
-module.exports = { User }
+module.exports = {
+  User
+}
 

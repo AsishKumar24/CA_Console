@@ -34,12 +34,13 @@ if (process.env.NODE_ENV == 'production') {
   //console.log(swaggerSpec)
   app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec))
 }
-
+const healthCheck = require('./routes/health')
+app.use('/' , healthCheck)
 connectDB()
   .then(() => {
     console.log('connection established with database')
-    app.listen(3000, () => {
-        console.log('listening to port 3000')
+    app.listen(process.env.PORT, () => {
+        console.log('listening to port')
         
     })
   })

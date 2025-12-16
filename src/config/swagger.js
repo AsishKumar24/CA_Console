@@ -24,9 +24,8 @@ const options = {
       }
     }
   },
-apis: ['./src/routes/*.js']
+  apis: ['./src/routes/*.js']
 }
- // Swagger reads ONLY route comments
-
+// Swagger reads ONLY route comments
 
 module.exports = swaggerJsdoc(options)

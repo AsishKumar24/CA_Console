@@ -22,25 +22,39 @@ exports.createTask = async (req, res) => {
   try {
     const data = req.body
 
-    if (!data.title) return res.status(400).json({ error: 'Title is required' })
+    if (!data.title)
+      return res.status(400).json({
+        error: 'Title is required'
+      })
     if (!data.client)
-      return res.status(400).json({ error: 'Client ID required' })
+      return res.status(400).json({
+        error: 'Client ID required'
+      })
 
     if (!mongoose.Types.ObjectId.isValid(data.client)) {
-      return res.status(400).json({ error: 'Invalid client ID' })
+      return res.status(400).json({
+        error: 'Invalid client ID'
+      })
     }
 
     const client = await Client.findById(data.client)
-    if (!client) return res.status(404).json({ error: 'Client not found' })
+    if (!client)
+      return res.status(404).json({
+        error: 'Client not found'
+      })
 
     if (data.assignedTo) {
       if (!mongoose.Types.ObjectId.isValid(data.assignedTo)) {
-        return res.status(400).json({ error: 'Invalid staff ID' })
+        return res.status(400).json({
+          error: 'Invalid staff ID'
+        })
       }
 
       const staff = await User.findById(data.assignedTo)
       if (!staff)
-        return res.status(404).json({ error: 'Assigned staff not found' })
+        return res.status(404).json({
+          error: 'Assigned staff not found'
+        })
     }
 
     const task = await Task.create({
@@ -56,10 +70,14 @@ exports.createTask = async (req, res) => {
 
     await task.save()
 
-    res.status(201).json({ task })
+    res.status(201).json({
+      task
+    })
   } catch (err) {
     console.error('createTask error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -71,13 +89,20 @@ exports.editTask = async (req, res) => {
     const { taskId } = req.params
 
     if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({ error: 'Invalid task ID' })
+      return res.status(400).json({
+        error: 'Invalid task ID'
+      })
 
     const task = await Task.findById(taskId)
-    if (!task) return res.status(404).json({ error: 'Task not found' })
+    if (!task)
+      return res.status(404).json({
+        error: 'Task not found'
+      })
 
     if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({ error: 'Not permitted' })
+      return res.status(403).json({
+        error: 'Not permitted'
+      })
 
     if (task.isArchived) return checkArchived(res, task)
 
@@ -95,10 +120,15 @@ exports.editTask = async (req, res) => {
     })
 
     await task.save()
-    res.json({ message: 'Task updated', task })
+    res.json({
+      message: 'Task updated',
+      task
+    })
   } catch (err) {
     console.error('editTask error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -111,16 +141,25 @@ exports.assignTask = async (req, res) => {
     const { staffId } = req.body
 
     if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({ error: 'Invalid task ID' })
+      return res.status(400).json({
+        error: 'Invalid task ID'
+      })
 
     if (!mongoose.Types.ObjectId.isValid(staffId))
-      return res.status(400).json({ error: 'Invalid staff ID' })
+      return res.status(400).json({
+        error: 'Invalid staff ID'
+      })
 
     const task = await Task.findById(taskId)
-    if (!task) return res.status(404).json({ error: 'Task not found' })
+    if (!task)
+      return res.status(404).json({
+        error: 'Task not found'
+      })
 
     if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({ error: 'Not permitted' })
+      return res.status(403).json({
+        error: 'Not permitted'
+      })
 
     if (task.isArchived) return checkArchived(res, task)
 
@@ -133,10 +172,15 @@ exports.assignTask = async (req, res) => {
 
     await task.save()
 
-    res.json({ message: 'Task assigned', task })
+    res.json({
+      message: 'Task assigned',
+      task
+    })
   } catch (err) {
     console.error('assignTask error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -149,10 +193,15 @@ exports.updateTaskStatus = async (req, res) => {
     const { status, note } = req.body
 
     if (!['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'].includes(status))
-      return res.status(400).json({ error: 'Invalid status' })
+      return res.status(400).json({
+        error: 'Invalid status'
+      })
 
     const task = await Task.findById(taskId)
-    if (!task) return res.status(404).json({ error: 'Task not found' })
+    if (!task)
+      return res.status(404).json({
+        error: 'Task not found'
+      })
 
     if (task.isArchived) return checkArchived(res, task)
 
@@ -160,7 +209,9 @@ exports.updateTaskStatus = async (req, res) => {
       req.user.role === 'STAFF' &&
       task.assignedTo.toString() !== req.user._id.toString()
     ) {
-      return res.status(403).json({ error: 'Not your task' })
+      return res.status(403).json({
+        error: 'Not your task'
+      })
     }
 
     task.status = status
@@ -175,10 +226,15 @@ exports.updateTaskStatus = async (req, res) => {
 
     await task.save()
 
-    res.json({ message: 'Status updated', task })
+    res.json({
+      message: 'Status updated',
+      task
+    })
   } catch (err) {
     console.error('updateTaskStatus error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -190,10 +246,16 @@ exports.addNote = async (req, res) => {
     const { taskId } = req.params
     const { message } = req.body
 
-    if (!message) return res.status(400).json({ error: 'Message required' })
+    if (!message)
+      return res.status(400).json({
+        error: 'Message required'
+      })
 
     const task = await Task.findById(taskId)
-    if (!task) return res.status(404).json({ error: 'Task not found' })
+    if (!task)
+      return res.status(404).json({
+        error: 'Task not found'
+      })
 
     if (task.isArchived) return checkArchived(res, task)
 
@@ -203,10 +265,15 @@ exports.addNote = async (req, res) => {
     })
 
     await task.save()
-    res.json({ message: 'Note added', task })
+    res.json({
+      message: 'Note added',
+      task
+    })
   } catch (err) {
     console.error('addNote error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -218,22 +285,34 @@ exports.archiveTask = async (req, res) => {
     const { taskId } = req.params
 
     if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({ error: 'Invalid task ID' })
+      return res.status(400).json({
+        error: 'Invalid task ID'
+      })
 
     const task = await Task.findById(taskId)
-    if (!task) return res.status(404).json({ error: 'Task not found' })
+    if (!task)
+      return res.status(404).json({
+        error: 'Task not found'
+      })
 
     if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({ error: 'Not permitted' })
+      return res.status(403).json({
+        error: 'Not permitted'
+      })
 
     task.isArchived = true
     task.archivedAt = new Date()
 
     await task.save()
-    res.json({ message: 'Task archived', task })
+    res.json({
+      message: 'Task archived',
+      task
+    })
   } catch (err) {
     console.error('archiveTask error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -245,22 +324,34 @@ exports.restoreTask = async (req, res) => {
     const { taskId } = req.params
 
     if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({ error: 'Invalid task ID' })
+      return res.status(400).json({
+        error: 'Invalid task ID'
+      })
 
     const task = await Task.findById(taskId)
-    if (!task) return res.status(404).json({ error: 'Task not found' })
+    if (!task)
+      return res.status(404).json({
+        error: 'Task not found'
+      })
 
     if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({ error: 'Not permitted' })
+      return res.status(403).json({
+        error: 'Not permitted'
+      })
 
     task.isArchived = false
     task.archivedAt = null
 
     await task.save()
-    res.json({ message: 'Task restored', task })
+    res.json({
+      message: 'Task restored',
+      task
+    })
   } catch (err) {
     console.error('restoreTask error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -281,7 +372,9 @@ exports.getMyTasks = async (req, res) => {
     const [tasks, total] = await Promise.all([
       Task.find(filter)
         .populate('client', 'name code')
-        .sort({ dueDate: 1 })
+        .sort({
+          dueDate: 1
+        })
         .skip(skip)
         .limit(limit),
 
@@ -299,7 +392,9 @@ exports.getMyTasks = async (req, res) => {
     })
   } catch (err) {
     console.error('getMyTasks error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -310,7 +405,10 @@ exports.getAdminTasks = async (req, res) => {
   try {
     const { page = 1, limit = 20, status, assignedTo } = req.query
 
-    const filter = { owner: req.user._id, isArchived: false }
+    const filter = {
+      owner: req.user._id,
+      isArchived: false
+    }
 
     if (status) filter.status = status
     if (assignedTo) filter.assignedTo = assignedTo
@@ -319,8 +417,10 @@ exports.getAdminTasks = async (req, res) => {
 
     const tasks = await Task.find(filter)
       .populate('client', 'name code')
-      .populate('assignedTo', 'fullName email')
-      .sort({ createdAt: -1 })
+      .populate('assignedTo', 'firstName email')
+      .sort({
+        createdAt: -1
+      })
       .skip(skip)
       .limit(Number(limit))
 
@@ -337,7 +437,9 @@ exports.getAdminTasks = async (req, res) => {
     })
   } catch (err) {
     console.error('getAdminTasks error:', err)
-    res.status(500).json({ error: 'Internal server error' })
+    res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
@@ -347,11 +449,16 @@ exports.getAdminTasks = async (req, res) => {
 exports.adminSummary = async (req, res) => {
   const owner = req.user._id
 
-  const total = await Task.countDocuments({ owner, isArchived: false })
+  const total = await Task.countDocuments({
+    owner,
+    isArchived: false
+  })
   const assigned = await Task.countDocuments({
     owner,
     isArchived: false,
-    assignedTo: { $ne: null }
+    assignedTo: {
+      $ne: null
+    }
   })
   const completed = await Task.countDocuments({
     owner,
@@ -359,7 +466,11 @@ exports.adminSummary = async (req, res) => {
     status: 'COMPLETED'
   })
 
-  res.json({ total, assigned, completed })
+  res.json({
+    total,
+    assigned,
+    completed
+  })
 }
 
 // ---------------------------------------
@@ -379,5 +490,8 @@ exports.staffSummary = async (req, res) => {
     status: 'COMPLETED'
   })
 
-  res.json({ assigned, completed })
+  res.json({
+    assigned,
+    completed
+  })
 }

@@ -5,21 +5,26 @@ const validator = require('validator') // optional, if you want to validate emai
 // Create a client - ADMIN only
 exports.createClient = async (req, res) => {
   try {
-    // don't accept owner from client body
     const { name, code, type, pan, gstin, mobile, email, address, notes } =
       req.body
 
     // basic validation
     if (!name || !mobile) {
-      return res.status(400).json({ error: 'Name and mobile are required' })
+      return res.status(400).json({
+        error: 'Name and mobile are required'
+      })
     }
 
-    // optional: validate phone/email formats
-    if (email && !validator.isEmail(email)) return res.status(400).json({ error: "Invalid email" });
+    if (email && !validator.isEmail(email))
+      return res.status(400).json({
+        error: 'Invalid email'
+      })
 
     // ensure req.user exists (auth middleware)
     if (!req.user) {
-      return res.status(401).json({ error: 'Unauthorized' })
+      return res.status(401).json({
+        error: 'Unauthorized'
+      })
     }
 
     // create client and set owner to the logged-in admin
@@ -36,55 +41,80 @@ exports.createClient = async (req, res) => {
       notes
     })
 
-    return res.status(201).json({ message: 'Client created', client })
+    return res.status(201).json({
+      message: 'Client created',
+      client
+    })
   } catch (err) {
     console.error('createClient error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
 // List clients for the current admin (ADMIN only)
 exports.getClients = async (req, res) => {
   try {
-    if (!req.user) return res.status(401).json({ error: 'Unauthorized' })
+    if (!req.user)
+      return res.status(401).json({
+        error: 'Unauthorized'
+      })
 
     // Return clients owned by this admin
-    const clients = await Client.find({ owner: req.user._id })
-      .sort({ createdAt: -1 })
+    const clients = await Client.find({
+      owner: req.user._id
+    })
+      .sort({
+        createdAt: -1
+      })
       .exec()
 
-    return res.json({ clients })
+    return res.json({
+      clients
+    })
   } catch (err) {
     console.error('getClients error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
 
-// Get single client (ADMIN only) — ensure ownership
+// Get single client (ADMIN only)
 exports.getClientById = async (req, res) => {
   try {
     const { clientId } = req.params
 
     if (!mongoose.Types.ObjectId.isValid(clientId)) {
-      return res.status(400).json({ error: 'Invalid client id' })
+      return res.status(400).json({
+        error: 'Invalid client id'
+      })
     }
 
     const client = await Client.findById(clientId).exec()
-    if (!client) return res.status(404).json({ error: 'Client not found' })
+    if (!client)
+      return res.status(404).json({
+        error: 'Client not found'
+      })
 
-    // ensure only owner (admin who created it) can view it
+    // only owner (admin who created it) can view it
     if (!req.user || String(client.owner) !== String(req.user._id)) {
-      return res.status(403).json({ error: 'Forbidden' })
+      return res.status(403).json({
+        error: 'Forbidden'
+      })
     }
 
-    return res.json({ client })
+    return res.json({
+      client
+    })
   } catch (err) {
     console.error('getClientById error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
-
-
 
 // GET /api/clients?page=1&limit=10&search=ravi
 // Only ADMIN can access this route.
@@ -108,17 +138,29 @@ exports.getPaginatedClients = async (req, res) => {
     let filter = {
       owner: req.user._id, // only clients created by this admin
       $or: [
-        { name: new RegExp(search, 'i') },
-        { email: new RegExp(search, 'i') },
-        { mobile: new RegExp(search, 'i') },
-        { type: new RegExp(search, 'i') },
-        { code: new RegExp(search, 'i') }
+        {
+          name: new RegExp(search, 'i')
+        },
+        {
+          email: new RegExp(search, 'i')
+        },
+        {
+          mobile: new RegExp(search, 'i')
+        },
+        {
+          type: new RegExp(search, 'i')
+        },
+        {
+          code: new RegExp(search, 'i')
+        }
       ]
     }
 
     // 5. Fetch paginated clients
     const clients = await Client.find(filter)
-      .sort({ createdAt: -1 }) // newest first
+      .sort({
+        createdAt: -1
+      }) // newest first
       .skip(skip)
       .limit(limit)
 
@@ -137,6 +179,8 @@ exports.getPaginatedClients = async (req, res) => {
     })
   } catch (err) {
     console.error('Pagination error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
+    return res.status(500).json({
+      error: 'Internal server error'
+    })
   }
 }
