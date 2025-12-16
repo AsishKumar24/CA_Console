@@ -35,10 +35,12 @@ if (process.env.NODE_ENV == 'production') {
 //check health of db and deployed model
 const healthCheck = require('./routes/health')
 app.use('/', healthCheck)
+const PORT = process.env.PORT || 3000
+
 connectDB()
   .then(() => {
     console.log('connection established with database')
-    app.listen(process.env.PORT, () => {
+    app.listen( PORT , () => {
       console.log('listening to port')
     })
   })
