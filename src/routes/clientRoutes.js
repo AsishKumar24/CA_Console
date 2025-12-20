@@ -90,7 +90,7 @@ clientRouter.post(
  *         description: Paginated list of clients
  */
 
-clientRouter.get('/', auth, requireAdmin, clientController.getPaginatedClients)
+clientRouter.get('/', auth, requireAdmin, clientController.getClients)
 
 // ---------------------------------------------
 // GET SINGLE CLIENT (Admin only)
@@ -119,5 +119,10 @@ clientRouter.get('/', auth, requireAdmin, clientController.getPaginatedClients)
 
 clientRouter.get('/:clientId', auth, requireAdmin, clientController.getClientById)
 clientRouter.patch('/:clientId', auth, requireAdmin, clientController.updateClient)
+
+// ==================== STAFF-ONLY ROUTES (READ-ONLY) ====================
+// Staff can view clients from their assigned tasks only
+clientRouter.get('/staff', auth, clientController.getStaffClients)
+clientRouter.get('/staff/:clientId', auth, clientController.getStaffClientById)
 
 module.exports = clientRouter

@@ -23,6 +23,8 @@ const authRouter = require('./routes/auth')
 const clientRouter = require('./routes/clientRoutes')
 const taskRouter = require('./routes/taskRoutes')
 const billingRouter = require('./routes/billingRoutes')
+const dashboardRouter = require('./routes/dashboardRoutes')
+const userRouter = require('./routes/userRoutes')
 
 //login and signup auth
 app.use('/auth', authRouter)
@@ -32,14 +34,21 @@ app.use('/api/clients', clientRouter)
 app.use('/api/tasks', taskRouter)
 //billing routes
 app.use('/api/billing', billingRouter)
+//dashboard routes
+app.use('/api/dashboard', dashboardRouter)
+//user routes
+app.use('/api/users', userRouter)
 app.use('/', require('./routes/testSwagger'))
-if (process.env.NODE_ENV == 'production') {
-  const swaggerUI = require('swagger-ui-express')
-  const swaggerSpec = require('./config/swagger')
-  //console.log(swaggerUI)
-  //console.log(swaggerSpec)
-  app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec))
-}
+
+// Swagger API Documentation (Available in both dev and production)
+const swaggerUI = require('swagger-ui-express')
+const swaggerSpec = require('./config/swagger')
+app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'CA Console API Docs'
+}))
+
+console.log('📚 Swagger Documentation available at: http://localhost:3000/api-docs')
 //check health of db and deployed model
 const healthCheck = require('./routes/health')
 app.use('/', healthCheck)

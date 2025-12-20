@@ -50,8 +50,8 @@ exports.login = async (req, res) => {
     // Set secure cookie
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' ? false : true,
-      sameSite: 'none', // REQUIRED for cross-site cookies (none)
+      secure: process.env.NODE_ENV === 'production' ? true : false,
+      sameSite: 'lax', // REQUIRED for cross-site cookies (none)
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
     //console.log("user is logged in")

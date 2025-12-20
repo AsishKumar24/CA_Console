@@ -364,15 +364,20 @@ exports.markAsPaid = async (req, res) => {
       })
     }
     
-    const amountPaid = paidAmount || task.billing.amount
+    // Calculate new total paid amount (add to existing if partially paid)
+    const previouslyPaid = task.billing.paidAmount || 0
+    const newPayment = paidAmount || task.billing.amount
+    const totalPaidAmount = previouslyPaid + newPayment
     
-    // Determine payment status
+    // Determine payment status based on total paid
     let paymentStatus = 'PAID'
-    if (amountPaid < task.billing.amount) {
+    if (totalPaidAmount < task.billing.amount) {
       paymentStatus = 'PARTIALLY_PAID'
+    } else if (totalPaidAmount >= task.billing.amount) {
+      paymentStatus = 'PAID'
     }
     
-    task.billing.paidAmount = amountPaid
+    task.billing.paidAmount = totalPaidAmount
     task.billing.paidAt = paidAt || new Date()
     task.billing.transactionId = transactionId || ''
     task.billing.paymentNotes = paymentNotes || ''
