@@ -3,18 +3,69 @@ const { Schema, model, Types } = require('mongoose')
 const clientSchema = new Schema(
   {
     owner: { type: Types.ObjectId, ref: 'User', required: true },
-    name: { type: String, required: true },
-    code: String,
+
+    name: {
+      type: String,
+      required: true,
+      trim: true
+    },
+
+    code: {
+      type: String,
+      trim: true,
+      uppercase : true
+    },
+
+    type: {
+      type: String,
+      trim: true
+    },
+
+    pan: {
+      type: String,
+      trim: true,
+      uppercase: true
+    },
+
+    gstin: {
+      type: String,
+      trim: true,
+      uppercase: true
+    },
+
+    mobile: {
+      type: String,
+      required: true,
+      trim: true
+    },
+
+    email: {
+      type: String,
+      trim: true,
+      lowercase: true
+    },
+
+    address: {
+      type: String,
+      trim: true
+    },
+
+    notes: {
+      type: String,
+      trim: true
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true
+    },
+    alternateMobile: {
     type: String,
-    pan: String,
-    gstin: String,
-    mobile: { type: String, required: true },
-    email: String,
-    address: String,
-    notes: String,
-    isActive: { type: Boolean, default: true }
+    trim: true
+    }
   },
   { timestamps: true }
 )
+
 
 module.exports = model('Client', clientSchema)

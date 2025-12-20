@@ -1,7 +1,7 @@
 const mongoose = require('mongoose')
 const sanitize = require('express-mongo-sanitize')
 const Task = require('../models/Task')
-const User = require('../models/User')
+const {User} = require('../models/User')
 const Client = require('../models/Client')
 
 // ---------------------------------------
@@ -57,16 +57,35 @@ exports.createTask = async (req, res) => {
         })
     }
 
-    const task = await Task.create({
+    // Prepare task data
+    const taskData = {
       ...data,
-      owner: req.user._id,
-      createdBy: req.user._id
-    })
+      owner: req.user._id
+    }
 
+    // If notes are provided, add createdBy to each note
+    if (data.notes && Array.isArray(data.notes)) {
+      taskData.notes = data.notes.map(note => ({
+        message: note.message,
+        createdBy: req.user._id
+      }))
+    }
+
+    const task = await Task.create(taskData)
+
+    // Add NOT_STARTED status
     task.statusHistory.push({
       status: 'NOT_STARTED',
       changedBy: req.user._id
     })
+
+    // If task is assigned during creation, add ASSIGNED status
+    if (data.assignedTo) {
+      task.statusHistory.push({
+        status: 'ASSIGNED',
+        changedBy: req.user._id
+      })
+    }
 
     await task.save()
 
@@ -81,56 +100,73 @@ exports.createTask = async (req, res) => {
   }
 }
 
+
+
 // ---------------------------------------
 // EDIT TASK (Admin only)
 // ---------------------------------------
 exports.editTask = async (req, res) => {
   try {
     const { taskId } = req.params
+    const { title, serviceType, priority, dueDate, assessmentYear, period } =
+      req.body
 
-    if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({
-        error: 'Invalid task ID'
+    console.log('✏️ Editing task:', taskId)
+
+    // Check admin permission
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        error: 'Only administrators can edit tasks'
       })
+    }
 
     const task = await Task.findById(taskId)
-    if (!task)
-      return res.status(404).json({
-        error: 'Task not found'
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' })
+    }
+
+    // Prevent editing completed or archived tasks
+    if (task.status === 'COMPLETED') {
+      return res.status(400).json({
+        error: 'Cannot edit completed tasks. Please restore first if needed.'
       })
+    }
 
-    if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({
-        error: 'Not permitted'
+    if (task.isArchived) {
+      return res.status(400).json({
+        error: 'Cannot edit archived tasks. Please restore first.'
       })
+    }
 
-    if (task.isArchived) return checkArchived(res, task)
-
-    const allowedFields = [
-      'title',
-      'serviceType',
-      'priority',
-      'dueDate',
-      'assessmentYear',
-      'period'
-    ]
-
-    allowedFields.forEach(field => {
-      if (req.body[field] !== undefined) task[field] = req.body[field]
-    })
+    // Update fields
+    if (title) task.title = title
+    if (serviceType !== undefined) task.serviceType = serviceType
+    if (priority) task.priority = priority
+    if (dueDate !== undefined) task.dueDate = dueDate
+    if (assessmentYear !== undefined) task.assessmentYear = assessmentYear
+    if (period !== undefined) task.period = period
 
     await task.save()
+
+    console.log('✅ Task updated successfully')
+
+    // Return populated task
+    const updatedTask = await Task.findById(taskId)
+      .populate('client', 'name code')
+      .populate('assignedTo', 'firstName email')
+      .populate('owner', 'firstName')
+
     res.json({
-      message: 'Task updated',
-      task
+      message: 'Task updated successfully',
+      task: updatedTask
     })
-  } catch (err) {
-    console.error('editTask error:', err)
-    res.status(500).json({
-      error: 'Internal server error'
-    })
+  } catch (error) {
+    console.error('❌ Error editing task:', error)
+    res.status(500).json({ error: 'Failed to update task' })
   }
 }
+
 
 // ---------------------------------------
 // ASSIGN TASK (Admin only)
@@ -192,49 +228,67 @@ exports.updateTaskStatus = async (req, res) => {
     const { taskId } = req.params
     const { status, note } = req.body
 
-    if (!['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'].includes(status))
-      return res.status(400).json({
-        error: 'Invalid status'
-      })
+    console.log('🔄 Updating task status:', taskId, '→', status)
 
     const task = await Task.findById(taskId)
-    if (!task)
-      return res.status(404).json({
-        error: 'Task not found'
-      })
 
-    if (task.isArchived) return checkArchived(res, task)
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' })
+    }
 
-    if (
-      req.user.role === 'STAFF' &&
-      task.assignedTo.toString() !== req.user._id.toString()
-    ) {
+    // Permission check
+    const isAdmin = req.user.role === 'ADMIN'
+    const isAssigned = task.assignedTo?.toString() === req.user.id
+
+    if (!isAdmin && !isAssigned) {
       return res.status(403).json({
-        error: 'Not your task'
+        error: 'You do not have permission to update this task'
       })
     }
 
+    // Cannot update archived tasks
+    if (task.isArchived) {
+      return res.status(400).json({
+        error: 'Cannot update status of archived tasks'
+      })
+    }
+
+    // Store old status
+    const oldStatus = task.status
+
+    // Update status
     task.status = status
 
-    if (status === 'COMPLETED') task.completedAt = new Date()
+    // Track completion time
+    if (status === 'COMPLETED' && oldStatus !== 'COMPLETED') {
+      task.completedAt = new Date()
+      console.log('✅ Task marked as completed, will auto-archive in 7 days')
+    }
 
+    // Add to status history
     task.statusHistory.push({
-      status,
-      note,
-      changedBy: req.user._id
+      status: status,
+      changedBy: req.user.id,
+      changedAt: new Date(),
+      note: note || `Status changed from ${oldStatus} to ${status}`
     })
 
     await task.save()
 
+    console.log('✅ Status updated successfully')
+
+    const updatedTask = await Task.findById(taskId)
+      .populate('client', 'name code')
+      .populate('assignedTo', 'firstName email')
+      .populate('statusHistory.changedBy', 'firstName')
+
     res.json({
-      message: 'Status updated',
-      task
+      message: 'Status updated successfully',
+      task: updatedTask
     })
-  } catch (err) {
-    console.error('updateTaskStatus error:', err)
-    res.status(500).json({
-      error: 'Internal server error'
-    })
+  } catch (error) {
+    console.error('❌ Error updating status:', error)
+    res.status(500).json({ error: 'Failed to update status' })
   }
 }
 
@@ -284,37 +338,52 @@ exports.archiveTask = async (req, res) => {
   try {
     const { taskId } = req.params
 
-    if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({
-        error: 'Invalid task ID'
+    console.log('📦 Archiving task:', taskId)
+
+    // Check admin permission
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        error: 'Only administrators can archive tasks'
       })
+    }
 
     const task = await Task.findById(taskId)
-    if (!task)
-      return res.status(404).json({
-        error: 'Task not found'
-      })
 
-    if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({
-        error: 'Not permitted'
-      })
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' })
+    }
 
+    // Already archived?
+    if (task.isArchived) {
+      return res.status(400).json({ error: 'Task is already archived' })
+    }
+
+    // ⭐ CRITICAL: Update fields
     task.isArchived = true
     task.archivedAt = new Date()
+    task.archivedBy = req.user.id
+    task.autoArchived = false // Manual archive
 
+    // ⭐ CRITICAL: Save to database
     await task.save()
+
+    console.log('✅ Task archived successfully (manual)')
+
     res.json({
-      message: 'Task archived',
-      task
+      message: 'Task archived successfully',
+      task: {
+        _id: task._id,
+        isArchived: task.isArchived,
+        archivedAt: task.archivedAt
+      }
     })
-  } catch (err) {
-    console.error('archiveTask error:', err)
-    res.status(500).json({
-      error: 'Internal server error'
-    })
+  } catch (error) {
+    console.error('❌ Error archiving task:', error)
+    res.status(500).json({ error: 'Failed to archive task' })
   }
 }
+
+
 
 // ---------------------------------------
 // RESTORE TASK (Admin only)
@@ -323,125 +392,143 @@ exports.restoreTask = async (req, res) => {
   try {
     const { taskId } = req.params
 
-    if (!mongoose.Types.ObjectId.isValid(taskId))
-      return res.status(400).json({
-        error: 'Invalid task ID'
+    console.log('🔄 Restoring task:', taskId)
+
+    // Check admin permission
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        error: 'Only administrators can restore tasks'
       })
+    }
 
     const task = await Task.findById(taskId)
-    if (!task)
-      return res.status(404).json({
-        error: 'Task not found'
-      })
 
-    if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({
-        error: 'Not permitted'
-      })
+    if (!task) {
+      console.log('❌ Task not found:', taskId)
+      return res.status(404).json({ error: 'Task not found' })
+    }
 
+    // Not archived?
+    if (!task.isArchived) {
+      return res.status(400).json({ error: 'Task is not archived' })
+    }
+
+    console.log('📋 Task before restore:', {
+      id: task._id,
+      isArchived: task.isArchived,
+      archivedAt: task.archivedAt,
+      autoArchived: task.autoArchived
+    })
+
+    // ⭐ CRITICAL: Update fields
     task.isArchived = false
-    task.archivedAt = null
+    task.archivedAt = undefined // or null
+    task.archivedBy = undefined // or null
+    task.autoArchived = false
 
+    // ⭐ CRITICAL: Save to database
     await task.save()
+
+    console.log('✅ Task restored successfully:', {
+      id: task._id,
+      isArchived: task.isArchived,
+      archivedAt: task.archivedAt
+    })
+
+    // Return populated task
+    const restoredTask = await Task.findById(taskId)
+      .populate('client', 'name code')
+      .populate('assignedTo', 'firstName email')
+      .populate('owner', 'firstName')
+
     res.json({
-      message: 'Task restored',
-      task
+      message: 'Task restored successfully',
+      task: restoredTask
     })
-  } catch (err) {
-    console.error('restoreTask error:', err)
-    res.status(500).json({
-      error: 'Internal server error'
-    })
+  } catch (error) {
+    console.error('❌ Error restoring task:', error)
+    res.status(500).json({ error: 'Failed to restore task' })
   }
 }
+
+
+
 
 // ---------------------------------------
 // GET STAFF TASKS (Paginated)
 // ---------------------------------------
 exports.getMyTasks = async (req, res) => {
   try {
-    const page = parseInt(req.query.page || '1')
-    const limit = parseInt(req.query.limit || '20')
-    const skip = (page - 1) * limit
+    const { archived } = req.query
 
-    const filter = {
-      assignedTo: req.user._id,
-      isArchived: false
+    let filter = {
+      $or: [{ assignedTo: req.user.id }, { owner: req.user.id }]
     }
 
-    const [tasks, total] = await Promise.all([
-      Task.find(filter)
-        .populate('client', 'name code')
-        .sort({
-          dueDate: 1
-        })
-        .skip(skip)
-        .limit(limit),
+    // ⭐ Filter by archived status
+    if (archived === 'true') {
+      filter.isArchived = true
+    } else {
+      filter.isArchived = { $ne: true }
+    }
 
-      Task.countDocuments(filter)
-    ])
+    const tasks = await Task.find(filter)
+      .populate('client', 'name code')
+      .populate('assignedTo', 'firstName email')
+      .populate('owner', 'firstName')
+      .sort({ createdAt: -1 })
 
-    res.json({
-      tasks,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit)
-      }
-    })
-  } catch (err) {
-    console.error('getMyTasks error:', err)
-    res.status(500).json({
-      error: 'Internal server error'
-    })
+    res.json({ tasks })
+  } catch (error) {
+    console.error('❌ Error fetching my tasks:', error)
+    res.status(500).json({ error: 'Failed to fetch tasks' })
   }
 }
+
 
 // ---------------------------------------
 // GET ADMIN ALL TASKS (Paginated + Filters)
 // ---------------------------------------
 exports.getAdminTasks = async (req, res) => {
   try {
-    const { page = 1, limit = 20, status, assignedTo } = req.query
+    const { archived, status, assignedTo, client } = req.query
 
-    const filter = {
-      owner: req.user._id,
-      isArchived: false
+    let filter = {}
+
+    // ⭐ Filter by archived status
+    if (archived === 'true') {
+      filter.isArchived = true
+    } else {
+      filter.isArchived = { $ne: true } // Exclude archived by default
     }
 
+    // Additional filters
     if (status) filter.status = status
     if (assignedTo) filter.assignedTo = assignedTo
+    if (client) filter.client = client
 
-    const skip = (page - 1) * limit
+    // If staff user, only show their tasks
+    if (req.user.role !== 'ADMIN') {
+      filter.$or = [{ assignedTo: req.user.id }, { owner: req.user.id }]
+    }
 
     const tasks = await Task.find(filter)
       .populate('client', 'name code')
       .populate('assignedTo', 'firstName email')
-      .sort({
-        createdAt: -1
-      })
-      .skip(skip)
-      .limit(Number(limit))
+      .populate('owner', 'firstName')
+      .sort({ createdAt: -1 })
 
-    const total = await Task.countDocuments(filter)
+    console.log(
+      `📊 Found ${tasks.length} tasks (archived: ${archived || 'false'})`
+    )
 
-    res.json({
-      tasks,
-      pagination: {
-        total,
-        page: Number(page),
-        limit: Number(limit),
-        totalPages: Math.ceil(total / limit)
-      }
-    })
-  } catch (err) {
-    console.error('getAdminTasks error:', err)
-    res.status(500).json({
-      error: 'Internal server error'
-    })
+    res.json({ tasks })
+  } catch (error) {
+    console.error('❌ Error fetching tasks:', error)
+    res.status(500).json({ error: 'Failed to fetch tasks' })
   }
 }
+
 
 // ---------------------------------------
 // ADMIN SUMMARY
@@ -495,3 +582,42 @@ exports.staffSummary = async (req, res) => {
     completed
   })
 }
+exports.getTaskById = async (req, res) => {
+  try {
+    const { taskId } = req.params
+
+    console.log('📋 Fetching task:', taskId)
+
+    const task = await Task.findById(taskId)
+      .populate('client', 'name code email phone')
+      .populate('assignedTo', 'firstName email role')
+      .populate('owner', 'firstName email role')
+      .populate('notes.createdBy', 'firstName')
+      .populate('statusHistory.changedBy', 'firstName')
+
+    if (!task) {
+      console.log('❌ Task not found:', taskId)
+      return res.status(404).json({ error: 'Task not found' })
+    }
+
+    // Permission check: Admin OR Owner OR Assigned User
+    const isAdmin = req.user.role === 'ADMIN'
+    const isOwner = task.owner._id.toString() === req.user.id
+    const isAssigned = task.assignedTo?._id.toString() === req.user.id
+
+    if (!isAdmin && !isOwner && !isAssigned) {
+      console.log('❌ Permission denied for user:', req.user.id)
+      return res.status(403).json({
+        error: 'You do not have permission to view this task'
+      })
+    }
+
+    console.log('✅ Task fetched successfully')
+    res.json({ task })
+  } catch (error) {
+    console.error('❌ Error fetching task:', error)
+    res.status(500).json({ error: 'Failed to fetch task details' })
+  }
+}
+
+

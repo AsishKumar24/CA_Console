@@ -118,5 +118,6 @@ clientRouter.get('/', auth, requireAdmin, clientController.getPaginatedClients)
  */
 
 clientRouter.get('/:clientId', auth, requireAdmin, clientController.getClientById)
+clientRouter.patch('/:clientId', auth, requireAdmin, clientController.updateClient)
 
 module.exports = clientRouter

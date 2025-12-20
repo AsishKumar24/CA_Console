@@ -50,17 +50,17 @@ exports.login = async (req, res) => {
     // Set secure cookie
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' ? true : false,
-      sameSite: 'none', // REQUIRED for cross-site cookies
+      secure: process.env.NODE_ENV === 'production' ? false : true,
+      sameSite: 'none', // REQUIRED for cross-site cookies (none)
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
-
+    //console.log("user is logged in")
     // Send sanitized user info
     return res.json({
       user: {
         id: user._id,
         email: user.email,
-        fullName: user.fullName,
+        firstName: user.firstName,
         role: user.role
       },
       message: 'login successfuly'
@@ -123,3 +123,37 @@ exports.logout = (req, res) => {
     message: 'Logged out'
   })
 }
+exports.getInfo = (req, res) => {
+  const user = req.user
+ // console.log(user)
+  return res.json({
+    id: user._id,
+    firstName: user.firstName, // or fullName depending on schema
+    email: user.email,
+    role: user.role
+  })
+}
+
+// controllers/user.controller.js
+exports.getAssignableUsers = async (req, res) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ error: 'Unauthorized' })
+    }
+
+    const ownerId = req.user._id
+
+    const users = await User.find({
+      role: { $in: ['ADMIN', 'STAFF'] }
+    })
+      .select('_id firstName email role')
+      .sort({ role: 1, firstName: 1 })
+
+    res.json({ users })
+  } catch (err) {
+    console.error('getAssignableUsers error:', err)
+    res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+

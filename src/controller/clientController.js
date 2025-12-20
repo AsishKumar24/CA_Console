@@ -40,7 +40,7 @@ exports.createClient = async (req, res) => {
       address,
       notes
     })
-
+    // console.log(client)
     return res.status(201).json({
       message: 'Client created',
       client
@@ -122,58 +122,55 @@ exports.getClientById = async (req, res) => {
 
 exports.getPaginatedClients = async (req, res) => {
   try {
-    // 1. Read pagination values from query params
-    // Example frontend would call: /api/clients?page=2&limit=10
-    let page = parseInt(req.query.page) || 1
-    let limit = parseInt(req.query.limit) || 10
+    // 1. Pagination params
+    let page = parseInt(req.query.page, 10) || 1
+    let limit = parseInt(req.query.limit, 10) || 10
 
-    // 2. Optional search query (frontend sends "?search=value")
-    const search = req.query.search || ''
+    // Safety cap (prevents abuse)
+    limit = Math.min(limit, 50)
 
-    // 3. Calculate how many records to skip
+    // 2. Optional search
+    const search = req.query.search?.trim() || ''
+
+    // 3. Skip calculation
     const skip = (page - 1) * limit
 
-    // 4. Build a MongoDB filter
-    // Search multiple fields using regex (case insensitive)
-    let filter = {
-      owner: req.user._id, // only clients created by this admin
-      $or: [
-        {
-          name: new RegExp(search, 'i')
-        },
-        {
-          email: new RegExp(search, 'i')
-        },
-        {
-          mobile: new RegExp(search, 'i')
-        },
-        {
-          type: new RegExp(search, 'i')
-        },
-        {
-          code: new RegExp(search, 'i')
-        }
+    // 4. Base filter (owner scope)
+    const filter = {
+      owner: req.user._id
+    }
+
+    // 5. Apply search only if provided
+    if (search) {
+      filter.$or = [
+        { name: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { mobile: { $regex: search, $options: 'i' } },
+        { type: { $regex: search, $options: 'i' } },
+        { code: { $regex: search, $options: 'i' } }
       ]
     }
 
-    // 5. Fetch paginated clients
+    // 6. Fetch clients
     const clients = await Client.find(filter)
       .sort({
-        createdAt: -1
-      }) // newest first
+            isActive: -1,    // true (1) first, false (0) last
+            createdAt: -1    // newest first within each group
+            }) // newest first
       .skip(skip)
       .limit(limit)
+      .select('name mobile email type code isActive createdAt') // send only needed fields
 
-    // 6. Count total records (for frontend pagination UI)
+    // 7. Count total for pagination
     const total = await Client.countDocuments(filter)
 
-    // 7. Send response to frontend
+    // 8. Response
     return res.json({
       clients,
       pagination: {
-        total, // total clients
-        page, // current page
-        limit, // page size
+        total,
+        page,
+        limit,
         totalPages: Math.ceil(total / limit)
       }
     })
@@ -184,3 +181,51 @@ exports.getPaginatedClients = async (req, res) => {
     })
   }
 }
+exports.updateClient = async (req, res) => {
+  try {
+    const { clientId } = req.params
+    const updates = req.body
+
+    const client = await Client.findById(clientId)
+
+    if (!client) {
+      return res.status(404).json({ error: 'Client not found' })
+    }
+
+    // owner check
+    if (String(client.owner) !== String(req.user._id)) {
+      return res.status(403).json({ error: 'Forbidden' })
+    }
+
+    // Allowed fields only (IMPORTANT)
+    const allowedUpdates = [
+      'name',
+      'mobile',
+      'alternateMobile',
+      'email',
+      'pan',
+      'gstin',
+      'address',
+      'notes',
+      'isActive'
+    ]
+
+    allowedUpdates.forEach(field => {
+      if (updates[field] !== undefined) {
+        client[field] = updates[field]
+      }
+    })
+
+    await client.save()
+
+    return res.json({
+      message: 'Client updated successfully',
+      client
+    })
+  } catch (err) {
+    console.error('Update client error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
+

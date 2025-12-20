@@ -69,5 +69,7 @@ authRouter.post('/login', authController.login)
  */
 
 authRouter.post('/register', auth, requireAdmin, authController.registerStaff)
-authRouter.post('/logout' , authController.logout )
+authRouter.post('/logout', authController.logout)
+authRouter.get('/me', auth, authController.getInfo)
+authRouter.get('/assignable',auth , requireAdmin,authController.getAssignableUsers)
 module.exports = authRouter

@@ -14,9 +14,15 @@ app.use(
 
 app.use(express.json())
 app.use(cookieParser())
+
+// Serve uploaded files statically
+const path = require('path')
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')))
+
 const authRouter = require('./routes/auth')
 const clientRouter = require('./routes/clientRoutes')
 const taskRouter = require('./routes/taskRoutes')
+const billingRouter = require('./routes/billingRoutes')
 
 //login and signup auth
 app.use('/auth', authRouter)
@@ -24,6 +30,8 @@ app.use('/auth', authRouter)
 app.use('/api/clients', clientRouter)
 //task routes
 app.use('/api/tasks', taskRouter)
+//billing routes
+app.use('/api/billing', billingRouter)
 app.use('/', require('./routes/testSwagger'))
 if (process.env.NODE_ENV == 'production') {
   const swaggerUI = require('swagger-ui-express')
@@ -36,15 +44,23 @@ if (process.env.NODE_ENV == 'production') {
 const healthCheck = require('./routes/health')
 app.use('/', healthCheck)
 const PORT = process.env.PORT || 3000
+//console.log('Node version:', process.version)
+const { startAutoArchiveCron } = require('./jobs/autoArchive')
+
 connectDB()
   .then(() => {
     console.log('connection established with database')
-    app.listen( PORT , () => {
+
+    // Initialize cron jobs
+    startAutoArchiveCron()
+
+    app.listen(PORT, () => {
       console.log('listening to port')
     })
   })
   .catch(error => {
-    console.error('Error connectiong to Database')
+    console.error('Error connecting to Database')
   })
+
 
 module.exports = app
