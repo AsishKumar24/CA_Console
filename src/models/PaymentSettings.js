@@ -99,7 +99,33 @@ const paymentSettingsSchema = new Schema(
     nextInvoiceNumber: {
       type: Number,
       default: 1
-    }
+    },
+    
+    // Letterhead/Firm settings for invoices
+    letterheads: [{
+      firmName: {
+        type: String,
+        required: true,
+        trim: true
+      },
+      firmSubtitle: {
+        type: String,
+        trim: true
+      },
+      proprietorName: {
+        type: String,
+        trim: true
+      },
+      designation: {
+        type: String,
+        trim: true,
+        default: 'Proprietor'
+      },
+      isDefault: {
+        type: Boolean,
+        default: false
+      }
+    }]
   },
   { timestamps: true }
 )

@@ -1,6 +1,7 @@
 const Client = require('../models/Client')
 const mongoose = require('mongoose')
 const validator = require('validator') // optional, if you want to validate email/phone
+const { logActivity } = require('../utils/activityLogger')
 
 // Create a client - ADMIN only
 exports.createClient = async (req, res) => {
@@ -41,6 +42,16 @@ exports.createClient = async (req, res) => {
       notes
     })
     // console.log(client)
+    // Log Activity
+    await logActivity({
+      user: req.user._id,
+      type: 'CLIENT',
+      action: 'CREATE',
+      description: `Added new client: ${client.name}`,
+      relatedId: client._id,
+      relatedModel: 'Client'
+    })
+
     return res.status(201).json({
       message: 'Client created',
       client
@@ -54,100 +65,116 @@ exports.createClient = async (req, res) => {
 }
 
 // List clients - ADMIN sees all, STAFF sees only clients from their assigned tasks
+// List clients - ADMIN sees all, STAFF sees only clients from their assigned tasks
 exports.getClients = async (req, res) => {
   try {
     if (!req.user)
       return res.status(401).json({ error: 'Unauthorized' })
 
-    const { page = 1, limit = 20, search = '', statusFilter = 'all' } = req.query;
+    const { 
+      page = 1, 
+      limit = 10, 
+      search = '', 
+      statusFilter = 'all',
+      letter = ''
+    } = req.query;
     
-    let clients;
-    let total;
+    const parsedPage = parseInt(page, 10);
+    const parsedLimit = parseInt(limit, 10);
+    const skip = (parsedPage - 1) * parsedLimit;
+
+    let query = {};
+    let countsScope = {}; // For calculating total active/inactive across all pages
 
     if (req.user.role === 'ADMIN') {
-      // Build query for admin
-      const query = { owner: req.user._id };
-      
-      // Filter by isActive based on statusFilter
-      if (statusFilter === 'active') {
-        query.isActive = true;
-      } else if (statusFilter === 'inactive') {
-        query.isActive = false;
-      }
-      // 'all' - don't add isActive filter
-      
-      // Search filter
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { code: { $regex: search, $options: 'i' } },
-          { mobile: { $regex: search, $options: 'i' } }
-        ];
-      }
-
-      clients = await Client.find(query)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .exec();
-        
-      total = await Client.countDocuments(query);
+      // ADMIN: Sees all clients they own
+      query.owner = req.user._id;
+      countsScope.owner = req.user._id;
     } else {
-      // Staff: Only return clients from tasks assigned to them
-      const Task = require('../models/Task')
-      
-      // Find all tasks assigned to this staff member
+      // STAFF: Sees ONLY clients from assigned tasks
+      const Task = require('../models/Task');
       const assignedTasks = await Task.find({
         assignedTo: req.user._id,
         isArchived: false
-      })
-        .select('client')
-        .lean()
+      }).select('client').lean();
 
-      // Extract unique client IDs
-      const clientIds = [...new Set(assignedTasks.map(task => task.client).filter(Boolean))]
-
-      // Build query for staff
-      const query = { _id: { $in: clientIds } };
-      
-      // Filter by isActive
-      if (statusFilter === 'active') {
-        query.isActive = true;
-      } else if (statusFilter === 'inactive') {
-        query.isActive = false;
-      }
-      
-      // Search filter
-      if (search) {
-        query.$or = [
-          { name: { $regex: search, $options: 'i' } },
-          { code: { $regex: search, $options: 'i' } },
-          { mobile: { $regex: search, $options: 'i' } }
-        ];
-      }
-
-      // Fetch those clients
-      clients = await Client.find(query)
-        .sort({ createdAt: -1 })
-        .skip((page - 1) * limit)
-        .limit(limit)
-        .exec()
-        
-      total = await Client.countDocuments(query);
+      const clientIds = [...new Set(assignedTasks.map(task => String(task.client)).filter(Boolean))];
+      query._id = { $in: clientIds };
+      countsScope._id = { $in: clientIds };
     }
-    
+
+    // --- APPLY FILTERS ---
+
+    // 1. Status Filter
+    if (statusFilter === 'active') {
+      query.isActive = true;
+    } else if (statusFilter === 'inactive') {
+      query.isActive = false;
+    }
+
+    // 2. Letter Filter (A-Z) - searches Name or Code
+    if (letter && /^[A-Z]$/i.test(letter)) {
+      query.$or = query.$or || [];
+      query.$or.push(
+        { name: { $regex: `^${letter}`, $options: 'i' } },
+        { code: { $regex: `^${letter}`, $options: 'i' } }
+      );
+    }
+
+    // 3. Search Filter
+    if (search) {
+      const searchRegex = { $regex: search, $options: 'i' };
+      const searchOr = [
+        { name: searchRegex },
+        { code: searchRegex },
+        { mobile: searchRegex },
+        { email: searchRegex }
+      ];
+      
+      // If $or already exists from letter filter, we need to wrap both in $and
+      if (query.$or) {
+        query.$and = [
+          { $or: query.$or },
+          { $or: searchOr }
+        ];
+        delete query.$or;
+      } else {
+        query.$or = searchOr;
+      }
+    }
+
+    // --- EXECUTE ---
+
+    const clients = await Client.find(query)
+      .sort({ isActive: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(parsedLimit)
+      .select('name mobile email type code isActive createdAt')
+      .exec();
+        
+    const total = await Client.countDocuments(query);
+
+    // --- GLOBAL COUNTS (Respecting Privacy Scope) ---
+    const activeCount = await Client.countDocuments({ ...countsScope, isActive: true });
+    const inactiveCount = await Client.countDocuments({ ...countsScope, isActive: false });
+
     return res.json({
       clients,
       pagination: {
         total,
-        page: parseInt(page),
-        limit: parseInt(limit),
-        totalPages: Math.ceil(total / limit)
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(total / parsedLimit)
+      },
+      counts: {
+        active: activeCount,
+        inactive: inactiveCount,
+        total: activeCount + inactiveCount
       }
     });
   } catch (err) {
-    console.error('getClients error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
+    console.error('getClients error:', err);
+    return res.status(500).json({ error: 'Internal server error' });
   }
 }
 
@@ -219,16 +246,38 @@ exports.getPaginatedClients = async (req, res) => {
 
     // 2. Optional search
     const search = req.query.search?.trim() || ''
+    
+    // 3. Status filter (all/active/inactive)
+    const statusFilter = req.query.statusFilter || 'all'
+    
+    // 4. Letter filter (A-Z)
+    const letter = req.query.letter?.trim()
 
-    // 3. Skip calculation
+    // 5. Skip calculation
     const skip = (page - 1) * limit
 
-    // 4. Base filter (owner scope)
+    // 6. Base filter (owner scope)
     const filter = {
       owner: req.user._id
     }
+    
+    // 7. Apply status filter
+    if (statusFilter === 'active') {
+      filter.isActive = true
+    } else if (statusFilter === 'inactive') {
+      filter.isActive = false
+    }
+    
+    // 8. Apply letter filter - search both name and code
+    if (letter && /^[A-Z]$/i.test(letter)) {
+      filter.$or = filter.$or || []
+      filter.$or.push(
+        { name: { $regex: `^${letter}`, $options: 'i' } },
+        { code: { $regex: `^${letter}`, $options: 'i' } }
+      )
+    }
 
-    // 5. Apply search only if provided
+    // 9. Apply search only if provided
     if (search) {
       filter.$or = [
         { name: { $regex: search, $options: 'i' } },
@@ -239,7 +288,7 @@ exports.getPaginatedClients = async (req, res) => {
       ]
     }
 
-    // 6. Fetch clients
+    // 10. Fetch clients
     const clients = await Client.find(filter)
       .sort({
             isActive: -1,    // true (1) first, false (0) last
@@ -249,10 +298,21 @@ exports.getPaginatedClients = async (req, res) => {
       .limit(limit)
       .select('name mobile email type code isActive createdAt') // send only needed fields
 
-    // 7. Count total for pagination
+    // 11. Count total for pagination (filtered)
     const total = await Client.countDocuments(filter)
+    
+    // 12. Get global counts (unfiltered, but owner-specific)
+    const activeCount = await Client.countDocuments({
+      owner: req.user._id,
+      isActive: true
+    })
+    
+    const inactiveCount = await Client.countDocuments({
+      owner: req.user._id,
+      isActive: false
+    })
 
-    // 8. Response
+    // 13. Response
     return res.json({
       clients,
       pagination: {
@@ -260,6 +320,11 @@ exports.getPaginatedClients = async (req, res) => {
         page,
         limit,
         totalPages: Math.ceil(total / limit)
+      },
+      counts: {
+        active: activeCount,
+        inactive: inactiveCount,
+        total: activeCount + inactiveCount
       }
     })
   } catch (err) {
@@ -334,7 +399,11 @@ exports.getStaffClients = async (req, res) => {
 
     const Task = require('../models/Task')
     
-    // Find all tasks assigned to this staff member
+    // 1. Optional filters from staff
+    const search = req.query.search?.trim() || ''
+    const letter = req.query.letter?.trim()
+
+    // 2. Find all tasks assigned to this staff member
     const assignedTasks = await Task.find({
       assignedTo: req.user._id,
       isArchived: false
@@ -342,18 +411,62 @@ exports.getStaffClients = async (req, res) => {
       .select('client')
       .lean()
 
-    // Extract unique client IDs
-    const clientIds = [...new Set(assignedTasks.map(task => task.client).filter(Boolean))]
+    // 3. Extract unique client IDs
+    const clientIds = [...new Set(assignedTasks.map(task => String(task.client)).filter(Boolean))]
 
-    // Fetch those clients
-    const clients = await Client.find({
+    // 4. Build filter
+    const filter = {
       _id: { $in: clientIds }
-    })
+    }
+
+    // 5. Apply Letter Filter (Name or Code)
+    if (letter && /^[A-Z]$/i.test(letter)) {
+      filter.$or = filter.$or || []
+      filter.$or.push(
+        { name: { $regex: `^${letter}`, $options: 'i' } },
+        { code: { $regex: `^${letter}`, $options: 'i' } }
+      )
+    }
+
+    // 6. Apply Search
+    if (search) {
+      filter.$or = filter.$or || []
+      filter.$or.push(
+        { name: { $regex: search, $options: 'i' } },
+        { mobile: { $regex: search, $options: 'i' } },
+        { code: { $regex: search, $options: 'i' } }
+      )
+    }
+
+    // 7. Fetch clients
+    const clients = await Client.find(filter)
       .sort({ createdAt: -1 })
-      .exec()
+      .select('name mobile email type code isActive createdAt')
+
+    // 8. Get counts for staff clients
+    const activeCount = await Client.countDocuments({
+      _id: { $in: clientIds },
+      isActive: true
+    })
+    
+    const inactiveCount = await Client.countDocuments({
+      _id: { $in: clientIds },
+      isActive: false
+    })
 
     return res.json({
-      clients
+      clients,
+      pagination: {
+        total: clients.length,
+        page: 1,
+        limit: clients.length,
+        totalPages: 1
+      },
+      counts: {
+        active: activeCount,
+        inactive: inactiveCount,
+        total: activeCount + inactiveCount
+      }
     })
   } catch (err) {
     console.error('getStaffClients error:', err)

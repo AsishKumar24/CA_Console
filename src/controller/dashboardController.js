@@ -1,6 +1,51 @@
 const Task = require('../models/Task')
 const Client = require('../models/Client')
 const { User } = require('../models/User')
+const Activity = require('../models/Activity')
+
+/**
+ * @route   GET /api/dashboard/activities
+ * @desc    Get recent system activities
+ * @access  Admin only
+ */
+exports.getRecentActivities = async (req, res) => {
+  try {
+    const activities = await Activity.find({})
+      .sort({ createdAt: -1 })
+      .limit(20)
+      .populate('user', 'firstName lastName')
+      .lean();
+
+    // Map to the format frontend expects if needed, or send as is
+    const formattedActivities = activities.map(activity => {
+      // Logic to determine icon based on type
+      let icon = '🔔';
+      if (activity.type === 'TASK') icon = '📋';
+      if (activity.type === 'CLIENT') icon = '👤';
+      if (activity.type === 'BILLING') icon = '📄';
+      if (activity.type === 'PAYMENT') icon = '💰';
+      if (activity.type === 'SYSTEM') icon = '⚙️';
+
+      // Format time (frontend will handle "X mins ago", but we can send ISO)
+      return {
+        ...activity,
+        icon,
+        time: activity.createdAt // Frontend can use date-fns to format
+      };
+    });
+
+    res.json({
+      success: true,
+      activities: formattedActivities
+    });
+  } catch (error) {
+    console.error('Error fetching activities:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to fetch recent activities'
+    });
+  }
+};
 
 /**
  * @route   GET /api/dashboard/stats
@@ -61,10 +106,15 @@ exports.getDashboardStats = async (req, res) => {
     ).length
 
     // Staff Statistics
-    const totalStaff = await User.countDocuments()
+    const totalStaff = await User.countDocuments({})
     
-    // Active staff today (you can enhance this with session tracking)
-    const activeTodayStaff = await User.countDocuments({
+    // Active staff = Admin + Active Staff members
+    const activeStaffCount = await User.countDocuments({ isActive: { $ne: false } })
+    
+    // Active staff today (users who are active AND have logged in today)
+    // If no tracking exists, we show total active users
+    const loggedInToday = await User.countDocuments({
+      isActive: { $ne: false },
       lastActive: { $gte: today }
     })
 
@@ -95,7 +145,7 @@ exports.getDashboardStats = async (req, res) => {
         },
         staff: {
           total: totalStaff,
-          activeToday: activeTodayStaff || totalStaff // Fallback to total if no tracking
+          activeToday: loggedInToday || activeStaffCount
         }
       }
     })

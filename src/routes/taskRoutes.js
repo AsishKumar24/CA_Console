@@ -350,8 +350,8 @@ const taskCtrl = require('../controller/taskController')
 router.get('/summary/staff', auth, taskCtrl.staffSummary)
 router.get('/summary/admin', auth, requireAdmin, taskCtrl.adminSummary)
 
-// Get all tasks (admin) or my tasks
-router.get('/', auth, requireAdmin, taskCtrl.getAdminTasks)
+// Get all tasks (admin sees all, staff sees assigned/owned)
+router.get('/', auth, taskCtrl.getAdminTasks)
 router.get('/my', auth, taskCtrl.getMyTasks)
 
 // ⭐ ADD THIS ROUTE - Get single task by ID
@@ -366,10 +366,13 @@ router.patch('/:taskId/status', auth, taskCtrl.updateTaskStatus)
 router.patch('/:taskId/assign', auth, requireAdmin, taskCtrl.assignTask)
 router.patch('/:taskId/edit', auth, requireAdmin, taskCtrl.editTask)
 
-// Archive & Restore (Admin only)
-router.patch('/:taskId/archive', auth, requireAdmin, taskCtrl.archiveTask)
+// Archive & Restore (Admin allowed for both, Staff allowed only for archiving their completed tasks)
+router.patch('/:taskId/archive', auth, taskCtrl.archiveTask)
 router.patch('/:taskId/restore', auth, requireAdmin, taskCtrl.restoreTask)
 
+// Permanent Deletion (Admin only, strict safeguards)
+router.delete('/:taskId/permanent', auth, requireAdmin, taskCtrl.permanentDeleteTask)
 
+router.post('/:taskId/remind', auth, requireAdmin, taskCtrl.sendTaskReminder);
 
 module.exports = router

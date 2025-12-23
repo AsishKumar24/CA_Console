@@ -2,3 +2,6 @@ node_modules
 .env
 Notes.md
 project_checklist.md
+*.md
+CLIENT_LIST_IMPORT_READY.xlsx
+importClients.js

@@ -72,4 +72,9 @@ authRouter.post('/register', auth, requireAdmin, authController.registerStaff)
 authRouter.post('/logout', authController.logout)
 authRouter.get('/me', auth, authController.getInfo)
 authRouter.get('/assignable',auth , requireAdmin,authController.getAssignableUsers)
+
+// Password Reset Routes
+authRouter.post('/forgot-password', authController.forgotPassword)
+authRouter.post('/reset-password', authController.resetPassword)
+
 module.exports = authRouter

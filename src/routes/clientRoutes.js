@@ -90,7 +90,7 @@ clientRouter.post(
  *         description: Paginated list of clients
  */
 
-clientRouter.get('/', auth, requireAdmin, clientController.getClients)
+clientRouter.get('/', auth, clientController.getClients)
 
 // ---------------------------------------------
 // GET SINGLE CLIENT (Admin only)
@@ -117,7 +117,7 @@ clientRouter.get('/', auth, requireAdmin, clientController.getClients)
  *         description: Client not found
  */
 
-clientRouter.get('/:clientId', auth, requireAdmin, clientController.getClientById)
+clientRouter.get('/:clientId', auth, clientController.getClientById)
 clientRouter.patch('/:clientId', auth, requireAdmin, clientController.updateClient)
 
 // ==================== STAFF-ONLY ROUTES (READ-ONLY) ====================

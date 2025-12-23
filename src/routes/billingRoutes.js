@@ -27,12 +27,21 @@ router.delete('/settings/qr/:qrId', auth, requireAdmin, billingController.delete
 // Bank Account Management
 router.post('/settings/bank', auth, requireAdmin, billingController.addBankAccount)
 
+// Letterhead/Firm Management
+router.post('/settings/letterhead', auth, requireAdmin, billingController.addLetterhead)
+router.patch('/settings/letterhead/:letterheadId', auth, requireAdmin, billingController.updateLetterhead)
+router.patch('/settings/letterhead/:letterheadId/default', auth, requireAdmin, billingController.setDefaultLetterhead)
+router.delete('/settings/letterhead/:letterheadId', auth, requireAdmin, billingController.deleteLetterhead)
+
 // ==========================================
 // BILLING OPERATIONS ROUTES (Admin Only)
 // ==========================================
 
 // Issue bill for a task
 router.patch('/tasks/:taskId/issue', auth, requireAdmin, billingController.issueBill)
+
+// Edit an issued bill
+router.patch('/tasks/:taskId/edit', auth, requireAdmin, billingController.editBill)
 
 // Mark payment as received
 router.patch('/tasks/:taskId/payment', auth, requireAdmin, billingController.markAsPaid)

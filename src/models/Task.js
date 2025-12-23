@@ -59,6 +59,8 @@ const taskSchema = new Schema(
     type: Types.ObjectId,
     ref: 'User'
   },
+  legacyAssignedName: String, // Stores name if staff is deleted
+
   owner: {
     type: Types.ObjectId,
     ref: 'User',
@@ -86,7 +88,32 @@ const taskSchema = new Schema(
   
   // Billing Section
   billing: {
-    // Bill Issuance
+    // ========== ADVANCE PAYMENT (At Task Creation) ==========
+    advance: {
+      isPaid: {
+        type: Boolean,
+        default: false
+      },
+      amount: {
+        type: Number,
+        default: 0
+      },
+      receiptNumber: String,  // Auto-generated: ADV-YYYYMMDD-XXX
+      paymentMode: {
+        type: String,
+        enum: ['UPI', 'BANK_TRANSFER', 'CASH', 'CHEQUE', 'NOT_SPECIFIED'],
+        default: 'NOT_SPECIFIED'
+      },
+      transactionId: String,
+      paidAt: Date,
+      notes: String,
+      receivedBy: {
+        type: Types.ObjectId,
+        ref: 'User'
+      }
+    },
+    
+    // ========== BILL ISSUANCE ==========
     amount: {
       type: Number,
       default: 0
@@ -97,7 +124,7 @@ const taskSchema = new Schema(
     },
     dueDate: Date,
     
-    // Payment Mode
+    // Payment Mode (set when marking payment, not during bill issue)
     paymentMode: {
       type: String,
       enum: ['UPI', 'BANK_TRANSFER', 'CASH', 'CHEQUE', 'NOT_SPECIFIED'],
@@ -136,7 +163,7 @@ const taskSchema = new Schema(
     issuedAt: Date,
     
     // Invoice Details
-    invoiceNumber: String,  // Auto-generated or manual
+    invoiceNumber: String,  // Auto-generated: INV-YYYYMMDD-XXX
     taxAmount: {
       type: Number,
       default: 0
@@ -144,7 +171,27 @@ const taskSchema = new Schema(
     discount: {
       type: Number,
       default: 0
-    }
+    },
+    
+    // Letterhead/Firm Header for Invoice
+    letterhead: {
+      firmName: String,
+      firmSubtitle: String,
+      proprietorName: String,
+      designation: String
+    },
+    
+    // Payment History - track individual payments
+    paymentHistory: [{
+      amount: Number,
+      mode: String,
+      transactionId: String,
+      notes: String,
+      paidAt: {
+        type: Date,
+        default: Date.now
+      }
+    }]
   },
   
   // Notes

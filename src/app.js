@@ -25,6 +25,8 @@ const taskRouter = require('./routes/taskRoutes')
 const billingRouter = require('./routes/billingRoutes')
 const dashboardRouter = require('./routes/dashboardRoutes')
 const userRouter = require('./routes/userRoutes')
+const managementRouter = require('./routes/managementRoutes')
+const healthRouter = require('./routes/healthRoutes')
 
 //login and signup auth
 app.use('/auth', authRouter)
@@ -38,6 +40,10 @@ app.use('/api/billing', billingRouter)
 app.use('/api/dashboard', dashboardRouter)
 //user routes
 app.use('/api/users', userRouter)
+//management routes
+app.use('/api/management', managementRouter)
+//health & monitoring routes
+app.use('/api/health', healthRouter)
 app.use('/', require('./routes/testSwagger'))
 
 // Swagger API Documentation (Available in both dev and production)
@@ -48,10 +54,9 @@ app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec, {
   customSiteTitle: 'CA Console API Docs'
 }))
 
-console.log('📚 Swagger Documentation available at: http://localhost:3000/api-docs')
+//console.log('📚 Swagger Documentation available at: http://localhost:3000/api-docs')
 //check health of db and deployed model
-const healthCheck = require('./routes/health')
-app.use('/', healthCheck)
+
 const PORT = process.env.PORT || 3000
 //console.log('Node version:', process.version)
 const { startAutoArchiveCron } = require('./jobs/autoArchive')

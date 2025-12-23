@@ -38,6 +38,15 @@ const userSchema = new Schema(
     isActive: {
       type: Boolean,
       default: true
+    },
+    // Password Reset Fields
+    resetPasswordToken: {
+      type: String,
+      default: undefined
+    },
+    resetPasswordExpires: {
+      type: Date,
+      default: undefined
     }
   },
   {
