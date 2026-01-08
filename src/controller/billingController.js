@@ -553,6 +553,7 @@ exports.issueBill = async (req, res) => {
       type: 'BILLING',
       action: 'ISSUE_BILL',
       description: `Issued bill ${task.billing.invoiceNumber} for task: ${task.title}`,
+      priority: 'IMPORTANT',
       relatedId: task._id,
       relatedModel: 'Task'
     })
@@ -746,6 +747,7 @@ exports.markAsPaid = async (req, res) => {
       type: 'PAYMENT',
       action: 'MARK_PAID',
       description: `Payment received for task: ${task.title} (Amount: ₹${newPayment})`,
+      priority: 'CRITICAL',
       relatedId: task._id,
       relatedModel: 'Task',
       metadata: { amount: newPayment, mode: paymentMode }
@@ -772,12 +774,17 @@ exports.markAsPaid = async (req, res) => {
 
 /**
  * @route   GET /api/billing/dashboard
- * @desc    Get billing dashboard stats
+ * @desc    Get billing dashboard stats with pagination
  * @access  Admin only
  */
 exports.getBillingDashboard = async (req, res) => {
   try {
-    const { status, clientId, fromDate, toDate, search } = req.query
+    const { status, clientId, fromDate, toDate, search, page = 1, limit = 20 } = req.query
+    
+    // Parse pagination params
+    const parsedPage = parseInt(page, 10)
+    const parsedLimit = parseInt(limit, 10)
+    const skip = (parsedPage - 1) * parsedLimit
     
     // Build query
     const query = { 'billing.paymentStatus': { $ne: 'NOT_ISSUED' } }
@@ -828,40 +835,57 @@ exports.getBillingDashboard = async (req, res) => {
       ]
     }
     
+    // Get total count for pagination (before limit/skip)
+    const totalCount = await Task.countDocuments(query)
+    
+    // Fetch paginated tasks
     const tasks = await Task.find(query)
       .populate('client', 'name code email')
       .populate('billing.issuedBy', 'firstName lastName')
       .sort({ 'billing.issuedAt': -1 })
+      .skip(skip)
+      .limit(parsedLimit)
     
-    // Calculate statistics (always based on full filtered list)
+    // Calculate statistics based on FULL FILTERED dataset (not just current page)
+    // This ensures stats reflect all filtered bills, not just the paginated view
+    const allFilteredTasks = await Task.find(query)
+      .select('billing')
+      .lean()
+    
     const stats = {
-      totalBills: tasks.length,
+      totalBills: allFilteredTasks.length,
       // Total amount includes tax and subtracts discount
-      totalAmount: tasks.reduce((sum, t) => {
+      totalAmount: allFilteredTasks.reduce((sum, t) => {
         const base = t.billing?.amount || 0
         const tax = t.billing?.taxAmount || 0
         const disc = t.billing?.discount || 0
         return sum + base + tax - disc
       }, 0),
       // Total paid includes advance + paidAmount
-      totalPaid: tasks.reduce((sum, t) => {
+      totalPaid: allFilteredTasks.reduce((sum, t) => {
         const advance = t.billing?.advance?.amount || 0
         const paid = t.billing?.paidAmount || 0
         return sum + advance + paid
       }, 0),
-      unpaid: tasks.filter(t => t.billing?.paymentStatus === 'UNPAID').length,
-      paid: tasks.filter(t => t.billing?.paymentStatus === 'PAID').length,
-      overdue: tasks.filter(t => 
+      unpaid: allFilteredTasks.filter(t => t.billing?.paymentStatus === 'UNPAID').length,
+      paid: allFilteredTasks.filter(t => t.billing?.paymentStatus === 'PAID').length,
+      overdue: allFilteredTasks.filter(t => 
         t.billing?.paymentStatus === 'UNPAID' && 
         new Date(t.billing.dueDate) < new Date()
       ).length,
-      partiallyPaid: tasks.filter(t => t.billing?.paymentStatus === 'PARTIALLY_PAID').length
+      partiallyPaid: allFilteredTasks.filter(t => t.billing?.paymentStatus === 'PARTIALLY_PAID').length
     }
     
     res.json({
       success: true,
       stats,
-      tasks
+      tasks,
+      pagination: {
+        total: totalCount,
+        page: parsedPage,
+        limit: parsedLimit,
+        totalPages: Math.ceil(totalCount / parsedLimit)
+      }
     })
   } catch (error) {
     console.error('Error fetching billing dashboard:', error)

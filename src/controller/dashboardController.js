@@ -5,19 +5,37 @@ const Activity = require('../models/Activity')
 
 /**
  * @route   GET /api/dashboard/activities
- * @desc    Get recent system activities
+ * @desc    Get recent system activities (prioritized)
  * @access  Admin only
  */
 exports.getRecentActivities = async (req, res) => {
   try {
-    const activities = await Activity.find({})
+    // Fetch activities with priority weighting
+    // Get CRITICAL and IMPORTANT activities (last 30 days) + recent INFO activities (last 7 days)
+    const criticalAndImportant = await Activity.find({
+      priority: { $in: ['CRITICAL', 'IMPORTANT'] }
+    })
       .sort({ createdAt: -1 })
-      .limit(20)
+      .limit(15)
       .populate('user', 'firstName lastName')
       .lean();
 
-    // Map to the format frontend expects if needed, or send as is
-    const formattedActivities = activities.map(activity => {
+    // Get recent INFO activities (only last 5)
+    const recentInfo = await Activity.find({
+      priority: 'INFO'
+    })
+      .sort({ createdAt: -1 })
+      .limit(5)
+      .populate('user', 'firstName lastName')
+      .lean();
+
+    // Combine and sort by date
+    const allActivities = [...criticalAndImportant, ...recentInfo]
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, 20); // Limit to 20 total
+
+    // Map to the format frontend expects
+    const formattedActivities = allActivities.map(activity => {
       // Logic to determine icon based on type
       let icon = '🔔';
       if (activity.type === 'TASK') icon = '📋';
@@ -25,6 +43,10 @@ exports.getRecentActivities = async (req, res) => {
       if (activity.type === 'BILLING') icon = '📄';
       if (activity.type === 'PAYMENT') icon = '💰';
       if (activity.type === 'SYSTEM') icon = '⚙️';
+
+      // Add priority indicators for visual distinction
+      if (activity.priority === 'CRITICAL') icon = '🔴 ' + icon;
+      if (activity.priority === 'IMPORTANT') icon = '🟡 ' + icon;
 
       // Format time (frontend will handle "X mins ago", but we can send ISO)
       return {

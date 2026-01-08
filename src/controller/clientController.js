@@ -48,6 +48,7 @@ exports.createClient = async (req, res) => {
       type: 'CLIENT',
       action: 'CREATE',
       description: `Added new client: ${client.name}`,
+      priority: 'IMPORTANT',
       relatedId: client._id,
       relatedModel: 'Client'
     })

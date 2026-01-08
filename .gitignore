@@ -5,3 +5,7 @@ project_checklist.md
 *.md
 CLIENT_LIST_IMPORT_READY.xlsx
 importClients.js
+
+deployment
+FIXED_GET_CLIENTS.js
+docs

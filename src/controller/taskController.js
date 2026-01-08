@@ -129,6 +129,7 @@ exports.createTask = async (req, res) => {
       type: 'TASK',
       action: 'CREATE',
       description: `Created new task: ${task.title}`,
+      priority: 'IMPORTANT',
       relatedId: task._id,
       relatedModel: 'Task'
     })
@@ -342,6 +343,7 @@ exports.updateTaskStatus = async (req, res) => {
       type: 'TASK',
       action: 'UPDATE_STATUS',
       description: `Updated status to ${status} for task: ${task.title}`,
+      priority: status === 'COMPLETED' ? 'IMPORTANT' : 'INFO',
       relatedId: task._id,
       relatedModel: 'Task'
     })
@@ -932,6 +934,7 @@ exports.sendTaskReminder = async (req, res) => {
       type: 'TASK',
       action: 'REMINDER_SENT',
       description: `Sent overdue reminder for task: ${task.title}`,
+      priority: 'INFO',
       relatedId: task._id,
       relatedModel: 'Task'
     })

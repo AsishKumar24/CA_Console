@@ -19,6 +19,11 @@ const activitySchema = new mongoose.Schema({
     type: String,
     required: true
   },
+  priority: {
+    type: String,
+    enum: ['INFO', 'IMPORTANT', 'CRITICAL'],
+    default: 'INFO'
+  },
   relatedId: {
     type: mongoose.Schema.Types.ObjectId,
     required: false
@@ -31,6 +36,11 @@ const activitySchema = new mongoose.Schema({
   metadata: {
     type: mongoose.Schema.Types.Mixed,
     default: {}
+  },
+  expiresAt: {
+    type: Date,
+    default: () => new Date(Date.now() + 60 * 24 * 60 * 60 * 1000), // 60 days from now
+    index: { expires: 0 } // TTL index - MongoDB will auto-delete when expiresAt is reached
   }
 }, {
   timestamps: true
@@ -38,5 +48,8 @@ const activitySchema = new mongoose.Schema({
 
 // Index for faster fetching of recent activities
 activitySchema.index({ createdAt: -1 });
+
+// Compound index for priority-based queries
+activitySchema.index({ priority: 1, createdAt: -1 });
 
 module.exports = mongoose.model('Activity', activitySchema);
