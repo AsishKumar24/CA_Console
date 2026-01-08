@@ -50,10 +50,14 @@ exports.login = async (req, res) => {
     )
 
     // Set secure cookie
+    // For local deployment (same IP): use 'lax', works with HTTP
+    // For cloud deployment (cross-origin): use 'none', requires HTTPS
+    const isLocalDeployment = process.env.CLIENT_URL && process.env.CLIENT_URL.includes('192.168');
+    
     res.cookie('token', token, {
       httpOnly: true,
-      secure: process.env.NODE_ENV === 'production' ? true : false,
-      sameSite: 'none', // REQUIRED for cross-site cookies (none)
+      secure: isLocalDeployment ? false : (process.env.NODE_ENV === 'production'),
+      sameSite: isLocalDeployment ? 'lax' : 'none',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
     //console.log("user is logged in")

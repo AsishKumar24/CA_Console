@@ -57,7 +57,7 @@ app.use('/api-docs', swaggerUI.serve, swaggerUI.setup(swaggerSpec, {
 //console.log('📚 Swagger Documentation available at: http://localhost:3000/api-docs')
 //check health of db and deployed model
 
-const PORT = process.env.PORT || 3000
+const PORT = process.env.PORT || 5000
 //console.log('Node version:', process.version)
 const { startAutoArchiveCron } = require('./jobs/autoArchive')
 
