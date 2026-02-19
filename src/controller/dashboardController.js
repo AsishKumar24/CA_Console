@@ -5,60 +5,48 @@ const Activity = require('../models/Activity')
 
 /**
  * @route   GET /api/dashboard/activities
- * @desc    Get recent system activities (prioritized)
+ * @desc    Get recent system activities (prioritized, completed tasks only)
  * @access  Admin only
  */
 exports.getRecentActivities = async (req, res) => {
   try {
-    // Fetch activities with priority weighting
-    // Get CRITICAL and IMPORTANT activities (last 30 days) + recent INFO activities (last 7 days)
-    const criticalAndImportant = await Activity.find({
-      priority: { $in: ['CRITICAL', 'IMPORTANT'] }
+    // Today's window: midnight to now
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+
+    // Fetch only CRITICAL + IMPORTANT activities from today, across all relevant types
+    // INFO (routine status updates, notes) are excluded — too noisy for a dashboard
+    const activities = await Activity.find({
+      priority: { $in: ['CRITICAL', 'IMPORTANT'] },
+      type: { $in: ['TASK', 'BILLING', 'PAYMENT'] },
+      createdAt: { $gte: startOfToday }
     })
       .sort({ createdAt: -1 })
-      .limit(15)
-      .populate('user', 'firstName lastName')
+      .limit(10)
+      .populate('user', 'firstName')
       .lean();
 
-    // Get recent INFO activities (only last 5)
-    const recentInfo = await Activity.find({
-      priority: 'INFO'
-    })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .populate('user', 'firstName lastName')
-      .lean();
-
-    // Combine and sort by date
-    const allActivities = [...criticalAndImportant, ...recentInfo]
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, 20); // Limit to 20 total
-
-    // Map to the format frontend expects
-    const formattedActivities = allActivities.map(activity => {
-      // Logic to determine icon based on type
+    // Map to a clean format for the frontend
+    const formattedActivities = activities.map(activity => {
       let icon = '🔔';
-      if (activity.type === 'TASK') icon = '📋';
-      if (activity.type === 'CLIENT') icon = '👤';
+      if (activity.type === 'TASK')    icon = '📋';
       if (activity.type === 'BILLING') icon = '📄';
       if (activity.type === 'PAYMENT') icon = '💰';
-      if (activity.type === 'SYSTEM') icon = '⚙️';
 
-      // Add priority indicators for visual distinction
-      if (activity.priority === 'CRITICAL') icon = '🔴 ' + icon;
-      if (activity.priority === 'IMPORTANT') icon = '🟡 ' + icon;
-
-      // Format time (frontend will handle "X mins ago", but we can send ISO)
       return {
-        ...activity,
+        type: activity.type,
+        description: activity.description,
+        user: activity.user?.firstName || 'Unknown',
+        priority: activity.priority,
         icon,
-        time: activity.createdAt // Frontend can use date-fns to format
+        time: activity.createdAt
       };
     });
 
     res.json({
       success: true,
-      activities: formattedActivities
+      activities: formattedActivities,
+      date: startOfToday  // so frontend knows what day this is for
     });
   } catch (error) {
     console.error('Error fetching activities:', error);
@@ -323,5 +311,28 @@ exports.getStaffStats = async (req, res) => {
       success: false,
       error: 'Failed to fetch staff statistics'
     })
+  }
+}
+
+/**
+ * @route   DELETE /api/dashboard/activities/clear
+ * @desc    Clear all activities from the database
+ * @access  Admin only
+ */
+exports.clearAllActivities = async (req, res) => {
+  try {
+    const result = await Activity.deleteMany({});
+    
+    res.json({
+      success: true,
+      message: `Successfully cleared ${result.deletedCount} activities`,
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error clearing activities:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to clear activities'
+    });
   }
 }

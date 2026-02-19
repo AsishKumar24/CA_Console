@@ -318,8 +318,14 @@ exports.updateTaskStatus = async (req, res) => {
     // Store old status
     const oldStatus = task.status
 
-    // Update status
-    task.status = status
+    // Update status -  Staff completing task goes to UNDER_REVIEW for admin approval
+    // Admin can still mark as COMPLETED directly if needed
+    if (status === 'COMPLETED' && !isAdmin) {
+      task.status = 'UNDER_REVIEW';
+      console.log('✅ Staff completed task, status set to UNDER_REVIEW for admin review');
+    } else {
+      task.status = status;
+    }
 
     // Track completion time
     if (status === 'COMPLETED' && oldStatus !== 'COMPLETED') {
@@ -947,6 +953,130 @@ exports.sendTaskReminder = async (req, res) => {
   } catch (error) {
     console.error('❌ Error sending reminder:', error);
     res.status(500).json({ error: 'Failed to send reminder' });
+  }
+};
+
+// ---------------------------------------
+// REVIEW TASK (Admin only - Approve or Request Changes)
+// ---------------------------------------
+exports.reviewTask = async (req, res) => {
+  try {
+    const { taskId } = req.params;
+    const { action, notes } = req.body;
+
+    console.log('🔍 Reviewing task:', taskId, 'Action:', action);
+
+    // Check admin permission
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({
+        error: 'Only administrators can review tasks'
+      });
+    }
+
+    // Validate action
+    if (!action || !['APPROVED', 'CHANGES_REQUESTED'].includes(action)) {
+      return res.status(400).json({
+        error: 'Invalid action. Must be APPROVED or CHANGES_REQUESTED'
+      });
+    }
+
+    // Notes are required for requesting changes
+    if (action === 'CHANGES_REQUESTED' && !notes) {
+      return res.status(400).json({
+        error: 'Review notes are required when requesting changes'
+      });
+    }
+
+    const task = await Task.findById(taskId);
+
+    if (!task) {
+      return res.status(404).json({ error: 'Task not found' });
+    }
+
+    // Cannot review archived tasks
+    if (task.isArchived) {
+      return res.status(400).json({
+        error: 'Cannot review archived tasks'
+      });
+    }
+
+    // Task must be UNDER_REVIEW or COMPLETED
+    if (task.status !== 'UNDER_REVIEW' && task.status !== 'COMPLETED') {
+      return res.status(400).json({
+        error: 'Only tasks with status UNDER_REVIEW or COMPLETED can be reviewed'
+      });
+    }
+
+    const oldStatus = task.status;
+
+    // Update status based on action
+    if (action === 'APPROVED') {
+      task.status = 'DONE';
+    } else if (action === 'CHANGES_REQUESTED') {
+      task.status = 'IN_PROGRESS';
+    }
+
+    // Add review to history
+    task.reviewHistory.push({
+      reviewedBy: req.user._id,
+      reviewedAt: new Date(),
+      action: action,
+      notes: notes || ''
+    });
+
+    // Add to status history
+    task.statusHistory.push({
+      status: task.status,
+      changedBy: req.user._id,
+      changedAt: new Date(),
+      note: `Admin ${action === 'APPROVED' ? 'approved' : 'requested changes'}: ${notes || 'No notes'}`
+    });
+
+    // Add review feedback as a Note when changes are requested
+    // This makes it visible in the Notes section for staff to see
+    if (action === 'CHANGES_REQUESTED' && notes) {
+      task.notes.push({
+        message: `📋 Admin Review Feedback:
+
+${notes}`,
+        createdBy: req.user._id,
+        createdAt: new Date()
+      });
+    }
+
+    await task.save();
+
+    // Log Activity
+    await logActivity({
+      user: req.user._id,
+      type: 'TASK',
+      action: action === 'APPROVED' ? 'APPROVE' : 'REQUEST_CHANGES',
+      description: action === 'APPROVED' 
+        ? `Approved task: ${task.title}` 
+        : `Requested changes on task: ${task.title}`,
+      priority: 'IMPORTANT',
+      relatedId: task._id,
+      relatedModel: 'Task',
+      metadata: { notes: notes || '' }
+    });
+
+    console.log('✅ Task reviewed successfully');
+
+    // Return populated task
+    const reviewedTask = await Task.findById(taskId)
+      .populate('client', 'name code')
+      .populate('assignedTo', 'firstName email')
+      .populate('reviewHistory.reviewedBy', 'firstName lastName');
+
+    res.json({
+      message: action === 'APPROVED' 
+        ? 'Task approved successfully' 
+        : 'Change request sent to staff',
+      task: reviewedTask
+    });
+  } catch (error) {
+    console.error('❌ Error reviewing task:', error);
+    res.status(500).json({ error: 'Failed to review task' });
   }
 };
 

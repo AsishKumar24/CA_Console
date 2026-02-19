@@ -16,4 +16,7 @@ router.get('/staff-stats', auth, dashboardController.getStaffStats)
 // Get recent activities (Admin only)
 router.get('/activities', auth, requireAdmin, dashboardController.getRecentActivities)
 
+// Clear all activities (Admin only)
+router.delete('/activities/clear', auth, requireAdmin, dashboardController.clearAllActivities)
+
 module.exports = router

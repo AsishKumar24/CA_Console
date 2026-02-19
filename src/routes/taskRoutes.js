@@ -375,4 +375,7 @@ router.delete('/:taskId/permanent', auth, requireAdmin, taskCtrl.permanentDelete
 
 router.post('/:taskId/remind', auth, requireAdmin, taskCtrl.sendTaskReminder);
 
+// Review task (Admin only - Approve or Request Changes)
+router.post('/:taskId/review', auth, requireAdmin, taskCtrl.reviewTask);
+
 module.exports = router

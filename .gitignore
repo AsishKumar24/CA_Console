@@ -7,3 +7,5 @@ CLIENT_LIST_IMPORT_READY.xlsx
 importClients.js
 deployment
 docs
+src/.DS_Store
+.DS_Store

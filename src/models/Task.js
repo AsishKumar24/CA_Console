@@ -42,7 +42,7 @@ const taskSchema = new Schema(
   },
   status: {
     type: String,
-    enum: ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED'],
+    enum: ['NOT_STARTED', 'IN_PROGRESS', 'COMPLETED', 'UNDER_REVIEW', 'DONE'],
     default: 'NOT_STARTED'
   },
   dueDate: Date,
@@ -85,6 +85,23 @@ const taskSchema = new Schema(
   
   // Completion tracking
   completedAt: Date,  // Added for auto-archive
+  
+  // Review tracking (Admin review workflow)
+  reviewHistory: [{
+    reviewedBy: {
+      type: Types.ObjectId,
+      ref: 'User'
+    },
+    reviewedAt: {
+      type: Date,
+      default: Date.now
+    },
+    action: {
+      type: String,
+      enum: ['APPROVED', 'CHANGES_REQUESTED']
+    },
+    notes: String
+  }],
   
   // Billing Section
   billing: {

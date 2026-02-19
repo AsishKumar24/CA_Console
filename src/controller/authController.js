@@ -267,9 +267,12 @@ exports.resetPassword = async (req, res) => {
     }
 
     // Validate password
-    if (password.length < 6) {
+    try {
+      const { validatePassword } = require('../utils/validation');
+      validatePassword(password);
+    } catch (validationError) {
       return res.status(400).json({ 
-        error: 'Password must be at least 6 characters long' 
+        error: validationError.message 
       });
     }
 

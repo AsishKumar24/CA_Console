@@ -12,8 +12,14 @@ const validateSignUpData = req => {
   }
 
   if (!validator.isStrongPassword(password)) {
-    throw new Error('Password is not strong enough')
+    throw new Error('Password must be at least 8 characters long and include uppercase, lowercase, number, and special character')
   }
 }
 
-module.exports = { validateSignUpData }
+const validatePassword = (password) => {
+  if (!validator.isStrongPassword(password)) {
+    throw new Error('Password must be at least 8 characters long and include uppercase, lowercase, number, and special character')
+  }
+}
+
+module.exports = { validateSignUpData, validatePassword }
