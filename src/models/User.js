@@ -1,7 +1,15 @@
-const { Schema, model } = require('mongoose')
+const { Schema, model, Types } = require('mongoose')
 const validator = require('validator')
 const userSchema = new Schema(
   {
+    // Multi-tenancy: the ADMIN (firm) this user belongs to.
+    // - STAFF: set to the admin who created them (their firm/tenant id).
+    // - ADMIN: left unset — an admin *is* the tenant.
+    owner: {
+      type: Types.ObjectId,
+      ref: 'User',
+      index: true
+    },
     firstName: {
       type: String,
       required: true,

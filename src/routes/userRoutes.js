@@ -4,6 +4,7 @@ const auth = require('../middleware/auth');
 const { requireAdmin } = require('../middleware/requireAdmin');
 const { User } = require('../models/User');
 const bcrypt = require('bcrypt');
+const { getTenantId } = require('../utils/tenant');
 
 /**
  * @openapi
@@ -19,7 +20,7 @@ const bcrypt = require('bcrypt');
  */
 router.get('/staff', auth, requireAdmin, async (req, res) => {
   try {
-    const staff = await User.find({ role: 'STAFF' })
+    const staff = await User.find({ role: 'STAFF', owner: getTenantId(req) })
       .select('-passwordHash')
       .sort({ createdAt: -1 });
     
@@ -72,6 +73,11 @@ router.patch('/:userId', auth, requireAdmin, async (req, res) => {
 
     const user = await User.findById(userId);
     if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Tenant isolation: an admin may only edit their own staff.
+    if (String(user.owner) !== String(getTenantId(req))) {
       return res.status(404).json({ error: 'User not found' });
     }
 

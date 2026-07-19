@@ -1,6 +1,7 @@
 const Task = require('../models/Task')
 const PaymentSettings = require('../models/PaymentSettings')
 const { logActivity } = require('../utils/activityLogger')
+const { getTenantId } = require('../utils/tenant')
 
 // ==========================================
 // FILE UPLOAD
@@ -49,7 +50,7 @@ exports.uploadQRCode = async (req, res) => {
  */
 exports.getPaymentSettings = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     
     let settings = await PaymentSettings.findOne({ adminId })
     
@@ -78,7 +79,7 @@ exports.getPaymentSettings = async (req, res) => {
  */
 exports.addQRCode = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { name, upiId, qrImageUrl } = req.body
     
     if (!name || !qrImageUrl) {
@@ -124,7 +125,7 @@ exports.addQRCode = async (req, res) => {
  */
 exports.updateQRCode = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { qrId } = req.params
     const { name, upiId, qrImageUrl, isActive } = req.body
     
@@ -174,7 +175,7 @@ exports.updateQRCode = async (req, res) => {
  */
 exports.deleteQRCode = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { qrId } = req.params
     
     const settings = await PaymentSettings.findOne({ adminId })
@@ -210,7 +211,7 @@ exports.deleteQRCode = async (req, res) => {
  */
 exports.addBankAccount = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { name, accountNumber, ifscCode, accountHolderName, bankName, branch } = req.body
     
     if (!name || !accountNumber || !ifscCode || !accountHolderName) {
@@ -263,7 +264,7 @@ exports.addBankAccount = async (req, res) => {
  */
 exports.addLetterhead = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { firmName, firmSubtitle, proprietorName, designation, isDefault } = req.body
     
     if (!firmName) {
@@ -315,7 +316,7 @@ exports.addLetterhead = async (req, res) => {
  */
 exports.updateLetterhead = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { letterheadId } = req.params
     const { firmName, firmSubtitle, proprietorName, designation } = req.body
     
@@ -365,7 +366,7 @@ exports.updateLetterhead = async (req, res) => {
  */
 exports.deleteLetterhead = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { letterheadId } = req.params
     
     const settings = await PaymentSettings.findOne({ adminId })
@@ -401,7 +402,7 @@ exports.deleteLetterhead = async (req, res) => {
  */
 exports.setDefaultLetterhead = async (req, res) => {
   try {
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const { letterheadId } = req.params
     
     const settings = await PaymentSettings.findOne({ adminId })
@@ -446,7 +447,7 @@ exports.setDefaultLetterhead = async (req, res) => {
 exports.issueBill = async (req, res) => {
   try {
     const { taskId } = req.params
-    const adminId = req.user.id
+    const adminId = getTenantId(req)
     const {
       amount,
       dueDate,
@@ -464,14 +465,14 @@ exports.issueBill = async (req, res) => {
     }
     
     const task = await Task.findById(taskId)
-    
-    if (!task) {
+
+    if (!task || String(task.owner) !== String(adminId)) {
       return res.status(404).json({
         success: false,
         error: 'Task not found'
       })
     }
-    
+
     // Generate invoice number if not provided
     let finalInvoiceNumber = invoiceNumber
     if (!finalInvoiceNumber) {
@@ -550,6 +551,7 @@ exports.issueBill = async (req, res) => {
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'BILLING',
       action: 'ISSUE_BILL',
       description: `Issued bill ${task.billing.invoiceNumber} for task: ${task.title}`,
@@ -586,16 +588,16 @@ exports.editBill = async (req, res) => {
   try {
     const { taskId } = req.params
     const { amount, dueDate, taxAmount, discount } = req.body
-    
+
     const task = await Task.findById(taskId)
-    
-    if (!task) {
+
+    if (!task || String(task.owner) !== String(getTenantId(req))) {
       return res.status(404).json({
         success: false,
         error: 'Task not found'
       })
     }
-    
+
     if (!task.billing || task.billing.paymentStatus === 'NOT_ISSUED') {
       return res.status(400).json({
         success: false,
@@ -664,14 +666,14 @@ exports.markAsPaid = async (req, res) => {
     } = req.body
     
     const task = await Task.findById(taskId)
-    
-    if (!task) {
+
+    if (!task || String(task.owner) !== String(getTenantId(req))) {
       return res.status(404).json({
         success: false,
         error: 'Task not found'
       })
     }
-    
+
     if (!task.billing || task.billing.paymentStatus === 'NOT_ISSUED') {
       return res.status(400).json({
         success: false,
@@ -744,6 +746,7 @@ exports.markAsPaid = async (req, res) => {
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'PAYMENT',
       action: 'MARK_PAID',
       description: `Payment received for task: ${task.title} (Amount: ₹${newPayment})`,
@@ -786,8 +789,8 @@ exports.getBillingDashboard = async (req, res) => {
     const parsedLimit = parseInt(limit, 10)
     const skip = (parsedPage - 1) * parsedLimit
     
-    // Build query
-    const query = { 'billing.paymentStatus': { $ne: 'NOT_ISSUED' } }
+    // Build query (this firm only)
+    const query = { owner: getTenantId(req), 'billing.paymentStatus': { $ne: 'NOT_ISSUED' } }
     
     if (status && status !== 'ALL') {
       if (status === 'OVERDUE') {
@@ -813,9 +816,10 @@ exports.getBillingDashboard = async (req, res) => {
     if (search) {
       const searchRegex = { $regex: search, $options: 'i' }
       
-      // Find matching clients first
+      // Find matching clients first (this firm only)
       const Client = require('../models/Client')
       const matchingClients = await Client.find({
+        owner: getTenantId(req),
         $or: [
           { name: searchRegex },
           { code: searchRegex }
@@ -908,8 +912,8 @@ exports.getTaskBilling = async (req, res) => {
     const task = await Task.findById(taskId)
       .populate('client', 'name code email phone address')
       .populate('billing.issuedBy', 'firstName lastName email')
-    
-    if (!task) {
+
+    if (!task || String(task.owner) !== String(getTenantId(req))) {
       return res.status(404).json({
         success: false,
         error: 'Task not found'

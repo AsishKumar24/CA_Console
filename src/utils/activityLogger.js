@@ -4,6 +4,7 @@ const Activity = require('../models/Activity');
  * Logs an activity in the system
  * @param {Object} params - Activity parameters
  * @param {ObjectId} params.user - User performing the action
+ * @param {ObjectId} params.owner - Tenant (firm/admin) id the activity belongs to
  * @param {String} params.type - Activity type (TASK, CLIENT, BILLING, etc.)
  * @param {String} params.action - Short action name (CREATE, UPDATE, DELETE, etc.)
  * @param {String} params.description - Human readable description
@@ -19,6 +20,7 @@ const Activity = require('../models/Activity');
  */
 const logActivity = async ({
   user,
+  owner,
   type,
   action,
   description,
@@ -30,6 +32,7 @@ const logActivity = async ({
   try {
     const activity = new Activity({
       user,
+      owner,
       type,
       action,
       description,

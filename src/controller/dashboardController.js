@@ -2,6 +2,7 @@ const Task = require('../models/Task')
 const Client = require('../models/Client')
 const { User } = require('../models/User')
 const Activity = require('../models/Activity')
+const { getTenantId } = require('../utils/tenant')
 
 /**
  * @route   GET /api/dashboard/activities
@@ -17,6 +18,7 @@ exports.getRecentActivities = async (req, res) => {
     // Fetch only CRITICAL + IMPORTANT activities from today, across all relevant types
     // INFO (routine status updates, notes) are excluded — too noisy for a dashboard
     const activities = await Activity.find({
+      owner: getTenantId(req),
       priority: { $in: ['CRITICAL', 'IMPORTANT'] },
       type: { $in: ['TASK', 'BILLING', 'PAYMENT'] },
       createdAt: { $gte: startOfToday }
@@ -64,44 +66,50 @@ exports.getRecentActivities = async (req, res) => {
  */
 exports.getDashboardStats = async (req, res) => {
   try {
+    const tenantId = getTenantId(req)
+
     // Get current date for today's calculations
     const today = new Date()
     today.setHours(0, 0, 0, 0)
-    
+
     const nextWeek = new Date()
     nextWeek.setDate(nextWeek.getDate() + 7)
 
-    // Task Statistics
-    const totalTasks = await Task.countDocuments({ isArchived: false })
-    const notStartedTasks = await Task.countDocuments({ status: 'NOT_STARTED', isArchived: false })
-    const inProgressTasks = await Task.countDocuments({ status: 'IN_PROGRESS', isArchived: false })
-    const completedTasks = await Task.countDocuments({ status: 'COMPLETED', isArchived: false })
-    
+    // Task Statistics (this firm only)
+    const totalTasks = await Task.countDocuments({ owner: tenantId, isArchived: false })
+    const notStartedTasks = await Task.countDocuments({ owner: tenantId, status: 'NOT_STARTED', isArchived: false })
+    const inProgressTasks = await Task.countDocuments({ owner: tenantId, status: 'IN_PROGRESS', isArchived: false })
+    const completedTasks = await Task.countDocuments({ owner: tenantId, status: 'COMPLETED', isArchived: false })
+
     const completedTodayTasks = await Task.countDocuments({
+      owner: tenantId,
       status: 'COMPLETED',
       completedAt: { $gte: today },
       isArchived: false
     })
-    
+
     const dueThisWeekTasks = await Task.countDocuments({
+      owner: tenantId,
       dueDate: { $lte: nextWeek, $gte: today },
       status: { $ne: 'COMPLETED' },
       isArchived: false
     })
-    
+
     const overdueTasks = await Task.countDocuments({
+      owner: tenantId,
       dueDate: { $lt: today },
       status: { $ne: 'COMPLETED' },
       isArchived: false
     })
 
-    // Client Statistics
-    const totalClients = await Client.countDocuments()
-    const activeClients = await Client.countDocuments({ isActive: true })
+    // Client Statistics (this firm only)
+    const totalClients = await Client.countDocuments({ owner: tenantId })
+    const activeClients = await Client.countDocuments({ owner: tenantId, isActive: true })
     const inactiveClients = totalClients - activeClients
 
-    // Billing Statistics
+    // Billing Statistics (this firm only)
     const billingTasks = await Task.find({
+      owner: tenantId,
       'billing.paymentStatus': { $ne: 'NOT_ISSUED' }
     })
     
@@ -115,15 +123,18 @@ exports.getDashboardStats = async (req, res) => {
       new Date(task.billing?.dueDate) < today
     ).length
 
-    // Staff Statistics
-    const totalStaff = await User.countDocuments({})
-    
+    // Staff Statistics — this firm = the admin plus the staff they own
+    const firmUsers = { $or: [{ _id: tenantId }, { owner: tenantId }] }
+
+    const totalStaff = await User.countDocuments(firmUsers)
+
     // Active staff = Admin + Active Staff members
-    const activeStaffCount = await User.countDocuments({ isActive: { $ne: false } })
-    
+    const activeStaffCount = await User.countDocuments({ ...firmUsers, isActive: { $ne: false } })
+
     // Active staff today (users who are active AND have logged in today)
     // If no tracking exists, we show total active users
     const loggedInToday = await User.countDocuments({
+      ...firmUsers,
       isActive: { $ne: false },
       lastActive: { $gte: today }
     })
@@ -175,11 +186,13 @@ exports.getDashboardStats = async (req, res) => {
  */
 exports.getOverdueItems = async (req, res) => {
   try {
+    const tenantId = getTenantId(req)
     const today = new Date()
     today.setHours(0, 0, 0, 0)
 
-    // Get overdue tasks
+    // Get overdue tasks (this firm only)
     const overdueTasks = await Task.find({
+      owner: tenantId,
       dueDate: { $lt: today },
       status: { $ne: 'COMPLETED' },
       isArchived: false
@@ -189,8 +202,9 @@ exports.getOverdueItems = async (req, res) => {
       .sort({ dueDate: 1 })
       .lean()
 
-    // Get overdue bills
+    // Get overdue bills (this firm only)
     const overdueBills = await Task.find({
+      owner: tenantId,
       'billing.paymentStatus': { $nin: ['NOT_ISSUED', 'PAID'] },
       'billing.dueDate': { $lt: today }
     })
@@ -321,7 +335,7 @@ exports.getStaffStats = async (req, res) => {
  */
 exports.clearAllActivities = async (req, res) => {
   try {
-    const result = await Activity.deleteMany({});
+    const result = await Activity.deleteMany({ owner: getTenantId(req) });
     
     res.json({
       success: true,

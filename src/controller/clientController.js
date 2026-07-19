@@ -2,6 +2,7 @@ const Client = require('../models/Client')
 const mongoose = require('mongoose')
 const validator = require('validator') // optional, if you want to validate email/phone
 const { logActivity } = require('../utils/activityLogger')
+const { getTenantId } = require('../utils/tenant')
 
 // Create a client - ADMIN only
 exports.createClient = async (req, res) => {
@@ -45,6 +46,7 @@ exports.createClient = async (req, res) => {
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'CLIENT',
       action: 'CREATE',
       description: `Added new client: ${client.name}`,

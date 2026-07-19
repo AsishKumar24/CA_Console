@@ -5,6 +5,7 @@ const { validateSignUpData } = require('../utils/validation')
 const validator = require('validator')
 const crypto = require('crypto')
 const nodemailer = require('nodemailer')
+const { getTenantId } = require('../utils/tenant')
 
 exports.login = async (req, res) => {
   try {
@@ -80,6 +81,50 @@ exports.login = async (req, res) => {
   }
 }
 
+// Public self-service firm registration: creates a new ADMIN (a new tenant).
+// Rate-limited by the shared /auth limiter mounted in app.js.
+exports.registerAdmin = async (req, res) => {
+  try {
+    // Validates firstName, lastName, email and a strong password.
+    try {
+      validateSignUpData(req)
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message })
+    }
+
+    const { firstName, lastName, email, password, phone } = req.body
+
+    const existing = await User.findOne({ email: email.toLowerCase() })
+    if (existing) {
+      return res.status(400).json({ error: 'Email already in use' })
+    }
+
+    const hash = await bcrypt.hash(password, 10)
+
+    // Admins have no `owner` — an admin is the tenant.
+    const admin = await User.create({
+      firstName,
+      lastName,
+      email,
+      passwordHash: hash,
+      phone,
+      role: 'ADMIN'
+    })
+
+    return res.status(201).json({
+      message: 'Firm registered successfully',
+      id: admin._id
+    })
+  } catch (err) {
+    // Duplicate phone (unique index) or other validation errors → 400
+    if (err.code === 11000 || err.name === 'ValidationError') {
+      return res.status(400).json({ error: 'A user with those details already exists' })
+    }
+    console.error('registerAdmin error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
+}
+
 exports.registerStaff = async (req, res) => {
   try {
     validateSignUpData(req)
@@ -103,8 +148,9 @@ exports.registerStaff = async (req, res) => {
     // Hash the password
     const hash = await bcrypt.hash(password, 10)
 
-    // Create staff user with passwordHash in DB
+    // Create staff user, scoped to the creating admin's tenant
     const user = await User.create({
+      owner: getTenantId(req), // the admin creating this staff member
       firstName,
       lastName,
       email,
@@ -148,10 +194,11 @@ exports.getAssignableUsers = async (req, res) => {
       return res.status(401).json({ error: 'Unauthorized' })
     }
 
-    const ownerId = req.user._id
+    const tenantId = getTenantId(req)
 
+    // Assignable = the admin themselves + their own staff (same tenant only).
     const users = await User.find({
-      role: { $in: ['ADMIN', 'STAFF'] },
+      $or: [{ _id: tenantId }, { owner: tenantId }],
       isActive: { $ne: false } // Only return active users
     })
       .select('_id firstName email role')

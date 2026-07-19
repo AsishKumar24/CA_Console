@@ -2,6 +2,7 @@ const { User } = require('../models/User')
 const Client = require('../models/Client')
 const Task = require('../models/Task')
 const mongoose = require('mongoose')
+const { getTenantId } = require('../utils/tenant')
 
 /**
  * @desc Get all inactive staff and clients for cleanup
@@ -10,15 +11,19 @@ const mongoose = require('mongoose')
  */
 exports.getInactiveEntities = async (req, res) => {
   try {
-    // 1. Get inactive staff (role STAFF and isActive false)
+    const tenantId = getTenantId(req)
+
+    // 1. Get inactive staff (role STAFF and isActive false) — this firm only
     const inactiveStaff = await User.find({
       role: 'STAFF',
-      isActive: false
+      isActive: false,
+      owner: tenantId
     }).select('firstName lastName email phone lastActive createdAt')
 
-    // 2. Get inactive clients (isActive false)
+    // 2. Get inactive clients (isActive false) — this firm only
     const inactiveClients = await Client.find({
-      isActive: false
+      isActive: false,
+      owner: tenantId
     }).select('name code email mobile gstin createdAt')
 
     res.json({
@@ -46,7 +51,7 @@ exports.deleteInactiveStaff = async (req, res) => {
   try {
     const { staffId } = req.params
 
-    const staff = await User.findOne({ _id: staffId, role: 'STAFF', isActive: false })
+    const staff = await User.findOne({ _id: staffId, role: 'STAFF', isActive: false, owner: getTenantId(req) })
     if (!staff) {
       return res.status(404).json({
         success: false,
@@ -110,7 +115,7 @@ exports.deleteInactiveClient = async (req, res) => {
   try {
     const { clientId } = req.params
 
-    const client = await Client.findOne({ _id: clientId, isActive: false })
+    const client = await Client.findOne({ _id: clientId, isActive: false, owner: getTenantId(req) })
     if (!client) {
       return res.status(404).json({
         success: false,
@@ -151,12 +156,15 @@ exports.deleteInactiveClient = async (req, res) => {
  */
 exports.getInactiveStaffTasks = async (req, res) => {
   try {
-    // 1. Find all inactive staff IDs
-    const inactiveStaff = await User.find({ role: 'STAFF', isActive: false }).select('_id')
+    const tenantId = getTenantId(req)
+
+    // 1. Find all inactive staff IDs for this firm
+    const inactiveStaff = await User.find({ role: 'STAFF', isActive: false, owner: tenantId }).select('_id')
     const inactiveStaffIds = inactiveStaff.map(s => s._id)
 
-    // 2. Find tasks assigned to these IDs OR tasks that have a legacy name saved
+    // 2. Find this firm's tasks assigned to those IDs OR with a legacy name saved
     const tasks = await Task.find({
+      owner: tenantId,
       $or: [
         { assignedTo: { $in: inactiveStaffIds } },
         { legacyAssignedName: { $exists: true, $ne: null } }

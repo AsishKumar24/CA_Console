@@ -1,6 +1,14 @@
 const mongoose = require('mongoose');
 
 const activitySchema = new mongoose.Schema({
+  // Multi-tenancy: the ADMIN (firm) this activity belongs to. Set to the
+  // acting user's tenant id so the dashboard only ever shows a firm's own feed.
+  owner: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User',
+    required: true,
+    index: true
+  },
   user: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',

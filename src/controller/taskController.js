@@ -5,6 +5,18 @@ const {User} = require('../models/User')
 const Client = require('../models/Client')
 const nodemailer = require('nodemailer')
 const { logActivity } = require('../utils/activityLogger')
+const { getTenantId } = require('../utils/tenant')
+
+// Tenant guard: returns true (and sends 404) if `task` is not in the caller's
+// firm. Use 404 (not 403) so a foreign task id is indistinguishable from a
+// non-existent one — no cross-tenant existence leak.
+function notInTenant (req, res, task) {
+  if (String(task.owner) !== String(getTenantId(req))) {
+    res.status(404).json({ error: 'Task not found' })
+    return true
+  }
+  return false
+}
 
 // ---------------------------------------
 // Helper: Prevent operations on archived tasks
@@ -39,7 +51,10 @@ exports.createTask = async (req, res) => {
       })
     }
 
-    const client = await Client.findById(data.client)
+    const tenantId = getTenantId(req)
+
+    // Client must belong to this firm
+    const client = await Client.findOne({ _id: data.client, owner: tenantId })
     if (!client)
       return res.status(404).json({
         error: 'Client not found'
@@ -52,7 +67,8 @@ exports.createTask = async (req, res) => {
         })
       }
 
-      const staff = await User.findById(data.assignedTo)
+      // Assignee must be this firm's own staff
+      const staff = await User.findOne({ _id: data.assignedTo, owner: tenantId })
       if (!staff)
         return res.status(404).json({
           error: 'Assigned staff not found'
@@ -126,6 +142,7 @@ exports.createTask = async (req, res) => {
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'TASK',
       action: 'CREATE',
       description: `Created new task: ${task.title}`,
@@ -170,6 +187,8 @@ exports.editTask = async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: 'Task not found' })
     }
+
+    if (notInTenant(req, res, task)) return
 
     if (task.isArchived) {
       return res.status(400).json({
@@ -254,9 +273,13 @@ exports.assignTask = async (req, res) => {
         error: 'Task not found'
       })
 
-    if (task.owner.toString() !== req.user._id.toString())
-      return res.status(403).json({
-        error: 'Not permitted'
+    if (notInTenant(req, res, task)) return
+
+    // Staff being assigned must belong to this firm
+    const staff = await User.findOne({ _id: staffId, owner: getTenantId(req) })
+    if (!staff)
+      return res.status(404).json({
+        error: 'Assigned staff not found'
       })
 
     if (task.isArchived) return checkArchived(res, task)
@@ -297,6 +320,8 @@ exports.updateTaskStatus = async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: 'Task not found' })
     }
+
+    if (notInTenant(req, res, task)) return
 
     // Permission check
     const isAdmin = req.user.role === 'ADMIN'
@@ -346,6 +371,7 @@ exports.updateTaskStatus = async (req, res) => {
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'TASK',
       action: 'UPDATE_STATUS',
       description: `Updated status to ${status} for task: ${task.title}`,
@@ -390,6 +416,15 @@ exports.addNote = async (req, res) => {
         error: 'Task not found'
       })
 
+    if (notInTenant(req, res, task)) return
+
+    // Only the owning admin or the assigned staff may add notes
+    const isAdmin = req.user.role === 'ADMIN'
+    const isAssigned = task.assignedTo?.toString() === req.user.id
+    if (!isAdmin && !isAssigned) {
+      return res.status(403).json({ error: 'You do not have permission to add notes to this task' })
+    }
+
     if (task.isArchived) return checkArchived(res, task)
 
     task.notes.push({
@@ -424,9 +459,11 @@ exports.archiveTask = async (req, res) => {
       return res.status(404).json({ error: 'Task not found' })
     }
 
+    if (notInTenant(req, res, task)) return
+
     const isAdmin = req.user.role === 'ADMIN'
     const isAssigned = task.assignedTo?.toString() === req.user.id
-    
+
     if (!isAdmin && !(isAssigned && task.status === 'COMPLETED')) {
       return res.status(403).json({
         error: 'Only administrators or the assigned staff (for completed tasks) can archive tasks'
@@ -483,6 +520,8 @@ exports.permanentDeleteTask = async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: 'Task not found' })
     }
+
+    if (notInTenant(req, res, task)) return
 
     // 2. CRITICAL SAFETY CHECKS - Prevent deletion of important records
 
@@ -573,6 +612,8 @@ exports.restoreTask = async (req, res) => {
       //console.log('❌ Task not found:', taskId)
       return res.status(404).json({ error: 'Task not found' })
     }
+
+    if (notInTenant(req, res, task)) return
 
     // Not archived?
     if (!task.isArchived) {
@@ -668,7 +709,15 @@ exports.getAdminTasks = async (req, res) => {
     const { archived, status, assignedTo, client, search, page = 1, limit = 20 } = req.query
     const skip = (parseInt(page) - 1) * parseInt(limit)
 
+    const tenantId = getTenantId(req)
     let filter = {}
+
+    // Tenant scope: admin sees the whole firm; staff only their assigned tasks
+    if (req.user.role === 'ADMIN') {
+      filter.owner = tenantId
+    } else {
+      filter.assignedTo = req.user._id
+    }
 
     // ⭐ Filter by archived status
     if (archived === 'true') {
@@ -679,13 +728,8 @@ exports.getAdminTasks = async (req, res) => {
 
     // Additional filters
     if (status) filter.status = status
-    if (assignedTo) filter.assignedTo = assignedTo
+    if (assignedTo && req.user.role === 'ADMIN') filter.assignedTo = assignedTo
     if (client) filter.client = client
-
-    // If staff user, only show their tasks
-    if (req.user.role !== 'ADMIN') {
-      filter.$or = [{ assignedTo: req.user.id }, { owner: req.user.id }]
-    }
 
     // Search filter
     if (search) {
@@ -697,6 +741,7 @@ exports.getAdminTasks = async (req, res) => {
       // OPTION: Find matching clients first
       const Client = require('../models/Client')
       const matchingClients = await Client.find({
+        owner: tenantId,
         $or: [
           { name: searchRegex },
           { code: searchRegex }
@@ -825,13 +870,16 @@ exports.getTaskById = async (req, res) => {
       return res.status(404).json({ error: 'Task not found' })
     }
 
-    // Permission check: Admin OR Owner OR Assigned User
+    // Tenant isolation first: a task outside the caller's firm is "not found".
+    if (task.owner._id.toString() !== String(getTenantId(req))) {
+      return res.status(404).json({ error: 'Task not found' })
+    }
+
+    // Within the firm: admin sees any task; staff only tasks assigned to them.
     const isAdmin = req.user.role === 'ADMIN'
-    const isOwner = task.owner._id.toString() === req.user.id
     const isAssigned = task.assignedTo?._id.toString() === req.user.id
 
-    if (!isAdmin && !isOwner && !isAssigned) {
-     //('❌ Permission denied for user:', req.user.id)
+    if (!isAdmin && !isAssigned) {
       return res.status(403).json({
         error: 'You do not have permission to view this task'
       })
@@ -866,6 +914,8 @@ exports.sendTaskReminder = async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
+
+    if (notInTenant(req, res, task)) return
 
     if (!task.assignedTo) {
       return res.status(400).json({ 
@@ -937,6 +987,7 @@ exports.sendTaskReminder = async (req, res) => {
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'TASK',
       action: 'REMINDER_SENT',
       description: `Sent overdue reminder for task: ${task.title}`,
@@ -992,6 +1043,8 @@ exports.reviewTask = async (req, res) => {
     if (!task) {
       return res.status(404).json({ error: 'Task not found' });
     }
+
+    if (notInTenant(req, res, task)) return
 
     // Cannot review archived tasks
     if (task.isArchived) {
@@ -1049,6 +1102,7 @@ ${notes}`,
     // Log Activity
     await logActivity({
       user: req.user._id,
+      owner: getTenantId(req),
       type: 'TASK',
       action: action === 'APPROVED' ? 'APPROVE' : 'REQUEST_CHANGES',
       description: action === 'APPROVED' 

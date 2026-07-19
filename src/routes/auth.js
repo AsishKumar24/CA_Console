@@ -35,6 +35,34 @@ const { requireAdmin } = require("../middleware/requireAdmin")
  */
 
 authRouter.post('/login', authController.login)
+
+/**
+ * @openapi
+ * /auth/register-admin:
+ *   post:
+ *     summary: Register a new firm (public — creates an ADMIN / new tenant)
+ *     tags: [Auth]
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [firstName, lastName, email, password]
+ *             properties:
+ *               firstName: { type: string }
+ *               lastName:  { type: string }
+ *               email:     { type: string }
+ *               password:  { type: string }
+ *               phone:     { type: string }
+ *     responses:
+ *       201:
+ *         description: Firm registered
+ *       400:
+ *         description: Validation error / email in use
+ */
+// Public. Rate-limited by the shared /auth limiter mounted in app.js.
+authRouter.post('/register-admin', authController.registerAdmin)
 /**
  * @openapi
  * /auth/register:
