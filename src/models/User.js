@@ -34,8 +34,20 @@ const userSchema = new Schema(
     },
     role: {
       type: String,
-      enum: ['ADMIN', 'STAFF'],
+      enum: ['SUPER_ADMIN', 'ADMIN', 'STAFF'],
       default: 'STAFF'
+    },
+    // Firm suspension (set on the ADMIN by the super admin). A suspended
+    // admin and all their staff are blocked from data routes.
+    suspended: {
+      type: Boolean,
+      default: false
+    },
+    // Forces a password change on first login (admins created with a temp
+    // password by the super admin). Cleared once the password is changed.
+    mustChangePassword: {
+      type: Boolean,
+      default: false
     },
     phone: {
       type: String,

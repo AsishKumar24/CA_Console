@@ -34,6 +34,8 @@ async function migrate () {
   if (adminId) {
     console.log(`Using MIGRATE_ADMIN_ID override: ${adminId}`)
   } else {
+    // Only true firm ADMINs count here — the SUPER_ADMIN (role SUPER_ADMIN,
+    // no firm) is never a tenant and is left untouched by this migration.
     const admins = await User.find({ role: 'ADMIN' }).select('_id email')
     if (admins.length === 0) {
       console.error('❌ No ADMIN user found — nothing to migrate. Aborting.')
