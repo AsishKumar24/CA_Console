@@ -7,6 +7,7 @@ const authRouter = express.Router()
 const authController = require('../controller/authController')
 const auth = require("../middleware/auth")
 const { requireAdmin } = require("../middleware/requireAdmin")
+const accountGuard = require("../middleware/accountGuard")
 /**
  * @openapi
  * /auth/login:
@@ -35,34 +36,6 @@ const { requireAdmin } = require("../middleware/requireAdmin")
  */
 
 authRouter.post('/login', authController.login)
-
-/**
- * @openapi
- * /auth/register-admin:
- *   post:
- *     summary: Register a new firm (public — creates an ADMIN / new tenant)
- *     tags: [Auth]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [firstName, lastName, email, password]
- *             properties:
- *               firstName: { type: string }
- *               lastName:  { type: string }
- *               email:     { type: string }
- *               password:  { type: string }
- *               phone:     { type: string }
- *     responses:
- *       201:
- *         description: Firm registered
- *       400:
- *         description: Validation error / email in use
- */
-// Public. Rate-limited by the shared /auth limiter mounted in app.js.
-authRouter.post('/register-admin', authController.registerAdmin)
 /**
  * @openapi
  * /auth/register:
@@ -96,10 +69,13 @@ authRouter.post('/register-admin', authController.registerAdmin)
  *         description: Admin only
  */
 
-authRouter.post('/register', auth, requireAdmin, authController.registerStaff)
+// accountGuard: a suspended or must-change-password admin cannot create staff
+authRouter.post('/register', auth, accountGuard, requireAdmin, authController.registerStaff)
 authRouter.post('/logout', authController.logout)
 authRouter.get('/me', auth, authController.getInfo)
-authRouter.get('/assignable',auth , requireAdmin,authController.getAssignableUsers)
+// Authenticated password change (also drives the forced first-login change)
+authRouter.post('/change-password', auth, authController.changePassword)
+authRouter.get('/assignable', auth, accountGuard, requireAdmin, authController.getAssignableUsers)
 
 // Password Reset Routes
 authRouter.post('/forgot-password', authController.forgotPassword)

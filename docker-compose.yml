@@ -43,6 +43,8 @@ services:
       ADMIN_PHONE: ${ADMIN_PHONE:-}
       EMAIL_USER: ${EMAIL_USER:-}
       EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+      # Auth brute-force limit (POSTs /auth per IP / 15min). Default 10.
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-10}
     volumes:
       # Uploaded files survive container rebuilds
       - uploads_data:/app/src/uploads

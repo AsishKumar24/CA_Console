@@ -26,7 +26,9 @@ app.use(cookieParser())
 const rateLimit = require('express-rate-limit')
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  // Default 10/15min per IP. Configurable because several users behind one
+  // office IP (shared NAT) can legitimately exceed a low limit.
+  limit: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '10', 10),
   standardHeaders: true,
   legacyHeaders: false,
   skip: req => req.method !== 'POST',
@@ -45,21 +47,30 @@ const dashboardRouter = require('./routes/dashboardRoutes')
 const userRouter = require('./routes/userRoutes')
 const managementRouter = require('./routes/managementRoutes')
 const healthRouter = require('./routes/healthRoutes')
+const platformRouter = require('./routes/platformRoutes')
+
+// Firm data routes are gated by auth + accountGuard (blocks suspended firms
+// and forces first-login password changes). Mounting them here means every
+// route inside inherits the guard.
+const auth = require('./middleware/auth')
+const accountGuard = require('./middleware/accountGuard')
 
 //login and signup auth
 app.use('/auth', authLimiter, authRouter)
 //Clients auth
-app.use('/api/clients', clientRouter)
+app.use('/api/clients', auth, accountGuard, clientRouter)
 //task routes
-app.use('/api/tasks', taskRouter)
+app.use('/api/tasks', auth, accountGuard, taskRouter)
 //billing routes
-app.use('/api/billing', billingRouter)
+app.use('/api/billing', auth, accountGuard, billingRouter)
 //dashboard routes
-app.use('/api/dashboard', dashboardRouter)
+app.use('/api/dashboard', auth, accountGuard, dashboardRouter)
 //user routes
-app.use('/api/users', userRouter)
+app.use('/api/users', auth, accountGuard, userRouter)
 //management routes
-app.use('/api/management', managementRouter)
+app.use('/api/management', auth, accountGuard, managementRouter)
+//platform (super admin) routes
+app.use('/api/platform', platformRouter)
 //health & monitoring routes
 app.use('/api/health', healthRouter)
 app.use('/', require('./routes/testSwagger'))

@@ -7,6 +7,17 @@ const crypto = require('crypto')
 const nodemailer = require('nodemailer')
 const { getTenantId } = require('../utils/tenant')
 
+// A firm is suspended via a flag on its ADMIN. For staff, that means their
+// owning admin's flag. Super admin is never suspended.
+async function effectiveSuspended (user) {
+  if (user.role === 'ADMIN') return !!user.suspended
+  if (user.role === 'STAFF') {
+    const admin = await User.findById(user.owner).select('suspended')
+    return !admin || !!admin.suspended
+  }
+  return false
+}
+
 exports.login = async (req, res) => {
   try {
     const { email, password } = req.body
@@ -63,13 +74,16 @@ exports.login = async (req, res) => {
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
     //console.log("user is logged in")
-    // Send sanitized user info
+    // Send sanitized user info + account state so the frontend can route to
+    // the password-change or suspended screens before loading any data.
     return res.json({
       user: {
         id: user._id,
         email: user.email,
         firstName: user.firstName,
-        role: user.role
+        role: user.role,
+        mustChangePassword: !!user.mustChangePassword,
+        suspended: await effectiveSuspended(user)
       },
       message: 'login successfuly'
     })
@@ -81,49 +95,10 @@ exports.login = async (req, res) => {
   }
 }
 
-// Public self-service firm registration: creates a new ADMIN (a new tenant).
-// Rate-limited by the shared /auth limiter mounted in app.js.
-exports.registerAdmin = async (req, res) => {
-  try {
-    // Validates firstName, lastName, email and a strong password.
-    try {
-      validateSignUpData(req)
-    } catch (validationError) {
-      return res.status(400).json({ error: validationError.message })
-    }
-
-    const { firstName, lastName, email, password, phone } = req.body
-
-    const existing = await User.findOne({ email: email.toLowerCase() })
-    if (existing) {
-      return res.status(400).json({ error: 'Email already in use' })
-    }
-
-    const hash = await bcrypt.hash(password, 10)
-
-    // Admins have no `owner` — an admin is the tenant.
-    const admin = await User.create({
-      firstName,
-      lastName,
-      email,
-      passwordHash: hash,
-      phone,
-      role: 'ADMIN'
-    })
-
-    return res.status(201).json({
-      message: 'Firm registered successfully',
-      id: admin._id
-    })
-  } catch (err) {
-    // Duplicate phone (unique index) or other validation errors → 400
-    if (err.code === 11000 || err.name === 'ValidationError') {
-      return res.status(400).json({ error: 'A user with those details already exists' })
-    }
-    console.error('registerAdmin error:', err)
-    return res.status(500).json({ error: 'Internal server error' })
-  }
-}
+// NOTE: firm admins are created only by the super admin via the platform
+// panel (see controller/platformController.js → services/firmService.js).
+// There is intentionally no public admin-registration route — onboarding is
+// sales-led.
 
 exports.registerStaff = async (req, res) => {
   try {
@@ -176,15 +151,57 @@ exports.logout = (req, res) => {
     message: 'Logged out'
   })
 }
-exports.getInfo = (req, res) => {
+exports.getInfo = async (req, res) => {
   const user = req.user
- // console.log(user)
   return res.json({
     id: user._id,
     firstName: user.firstName, // or fullName depending on schema
     email: user.email,
-    role: user.role
+    role: user.role,
+    mustChangePassword: !!user.mustChangePassword,
+    suspended: await effectiveSuspended(user)
   })
+}
+
+// Authenticated password change. Also used to satisfy the forced first-login
+// change: verifying the current (temp) password, then clearing the flag.
+exports.changePassword = async (req, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current and new password are required' })
+    }
+
+    const user = await User.findById(req.user._id)
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' })
+    }
+
+    const ok = await bcrypt.compare(currentPassword, user.passwordHash)
+    if (!ok) {
+      return res.status(401).json({ error: 'Current password is incorrect' })
+    }
+
+    try {
+      const { validatePassword } = require('../utils/validation')
+      validatePassword(newPassword)
+    } catch (validationError) {
+      return res.status(400).json({ error: validationError.message })
+    }
+
+    if (currentPassword === newPassword) {
+      return res.status(400).json({ error: 'New password must be different from the current one' })
+    }
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10)
+    user.mustChangePassword = false
+    await user.save()
+
+    return res.json({ message: 'Password changed successfully' })
+  } catch (err) {
+    console.error('changePassword error:', err)
+    return res.status(500).json({ error: 'Internal server error' })
+  }
 }
 
 // controllers/user.controller.js
