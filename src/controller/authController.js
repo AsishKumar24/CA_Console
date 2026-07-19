@@ -50,14 +50,15 @@ exports.login = async (req, res) => {
     )
 
     // Set secure cookie
-    // For local deployment (same IP): use 'lax', works with HTTP
-    // For cloud deployment (cross-origin): use 'none', requires HTTPS
-    const isLocalDeployment = process.env.CLIENT_URL && process.env.CLIENT_URL.includes('192.168');
-    
+    // Frontend and API are served from the same origin (Nginx proxies /auth
+    // and /api), so 'lax' is correct everywhere. 'secure' switches on
+    // automatically once CLIENT_URL is an https:// URL.
+    const isHttps = (process.env.CLIENT_URL || '').startsWith('https');
+
     res.cookie('token', token, {
       httpOnly: true,
-      secure: isLocalDeployment ? false : (process.env.NODE_ENV === 'production'),
-      sameSite: isLocalDeployment ? 'lax' : 'none',
+      secure: isHttps,
+      sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000 // 7 days
     })
     //console.log("user is logged in")

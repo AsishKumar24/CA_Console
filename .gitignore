@@ -9,3 +9,6 @@ deployment
 docs
 src/.DS_Store
 .DS_Store
+
+src/uploads/
+!README.md

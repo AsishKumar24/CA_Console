@@ -1,0 +1,62 @@
+# CA Console full stack
+# Expects CA_Console and CA_Console_web as sibling folders.
+# Local dev:  docker compose up --build   → app at http://localhost:8080
+# Secrets come from .env in this folder (never committed).
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    volumes:
+      - mongo_data:/data/db
+    # No ports exposed to host — only containers can reach it.
+    # Uncomment for Compass/mongosh access during dev:
+    # ports:
+    #   - "27017:27017"
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  backend:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      # Local Mongo by default. For Atlas in production, set MONGO_URI in .env
+      # and it wins over this default.
+      MONGO_URI: ${MONGO_URI:-mongodb://mongo:27017/ca_console}
+      # Browser origin — with the Nginx proxy everything is same-origin,
+      # but CORS + reset-password email links still use this.
+      CLIENT_URL: ${CLIENT_URL:-http://localhost:8080}
+      BASE_URL: ${BASE_URL:-http://localhost:8080}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in .env}
+      ADMIN_EMAIL: ${ADMIN_EMAIL:-}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-}
+      ADMIN_NAME: ${ADMIN_NAME:-}
+      ADMIN_PHONE: ${ADMIN_PHONE:-}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASSWORD: ${EMAIL_PASSWORD:-}
+    volumes:
+      # Uploaded files survive container rebuilds
+      - uploads_data:/app/src/uploads
+
+  frontend:
+    build:
+      context: ../CA_Console_web
+      # VITE_API_BASE_URL stays empty → relative URLs → Nginx proxies to backend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${WEB_PORT:-8080}:80"
+
+volumes:
+  mongo_data:
+  uploads_data:
