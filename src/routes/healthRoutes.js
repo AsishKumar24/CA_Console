@@ -9,8 +9,12 @@ const { testAutoArchive } = require('../jobs/autoArchive')
  * @route   GET /api/health/db
  * @desc    Get database health statistics and storage usage
  * @access  Admin only
+ *
+ * Counts are intentionally cluster-wide (this is a capacity monitor for the
+ * shared M0 tier), so it must be admin-gated — otherwise it would leak the
+ * whole platform's scale to anyone.
  */
-router.get('/db',  healthCtrl.getDatabaseHealth)
+router.get('/db', auth, requireAdmin, healthCtrl.getDatabaseHealth)
 
 /**
  * @route   POST /api/health/test-auto-archive
