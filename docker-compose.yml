@@ -56,7 +56,29 @@ services:
       - backend
     ports:
       - "${WEB_PORT:-8080}:80"
+      - "443:443"
+    volumes:
+      # TLS certs (read-only) and the ACME webroot, shared with certbot
+      - certbot_conf:/etc/letsencrypt:ro
+      - certbot_webroot:/var/www/certbot:ro
+    # Reload Nginx every 6h so renewed certs are picked up without a restart.
+    # Nginx stays in the foreground so the container dies (and restarts) if it
+    # crashes. $${!} escapes to ${!} (last bg pid) — Compose eats a single $.
+    command: /bin/sh -c "while :; do sleep 6h & wait $${!}; nginx -s reload; done & nginx -g 'daemon off;'"
+
+  # Let's Encrypt client. Obtains the cert via the webroot challenge (files
+  # written to the shared webroot, served by Nginx over HTTP) and then renews
+  # twice a day. Nginx (above) reloads periodically to load renewed certs.
+  certbot:
+    image: certbot/certbot
+    restart: unless-stopped
+    volumes:
+      - certbot_conf:/etc/letsencrypt
+      - certbot_webroot:/var/www/certbot
+    entrypoint: /bin/sh -c "trap exit TERM; while :; do certbot renew --webroot -w /var/www/certbot; sleep 12h & wait $${!}; done"
 
 volumes:
   mongo_data:
   uploads_data:
+  certbot_conf:
+  certbot_webroot:
