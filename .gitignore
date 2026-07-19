@@ -12,3 +12,5 @@ src/.DS_Store
 
 src/uploads/
 !README.md
+DEPLOYMENT_NOTES.txt
+docker-compose.override.yml
